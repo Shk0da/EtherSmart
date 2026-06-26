@@ -1,4 +1,5 @@
 const { ethers } = require("ethers");
+const { toBigInt } = require("./toBigInt");
 
 const ROUTER_ABI = [
   "function getAmountsOut(uint256 amountIn, address[] calldata path) external view returns (uint256[] memory amounts)",
@@ -34,7 +35,7 @@ async function batchGetAmountsOut(provider, config, requests) {
       continue;
     }
     const decoded = iface.decodeFunctionResult("getAmountsOut", returnData);
-    amounts.push(decoded.amounts[decoded.amounts.length - 1]);
+    amounts.push(toBigInt(decoded.amounts[decoded.amounts.length - 1]));
   }
 
   return amounts;

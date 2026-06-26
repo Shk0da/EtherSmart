@@ -1,15 +1,12 @@
 const { findCycles } = require("./graphEngine");
 const { quoteLegOut } = require("./arbFinderV4");
-const { calcThresholds, parseLoanSizes } = require("./arbFinder");
-const { estimateGasCostWei } = require("./gasOracle");
-const { pickFlashSource, premiumBpsForSource } = require("./flashPicker");
+const { parseLoanSizes } = require("./arbFinder");
+const { estimateGasCostInLoanToken } = require("./gasOracle");
+const { fetchAavePremiumBps } = require("./aavePremium");
+const { tryPickFlashSource, premiumBpsForSource } = require("./flashPicker");
+const { scoreOpportunity, sortByNetProfit } = require("./opportunityMath");
+const { toBigInt } = require("./toBigInt");
 const { ethers } = require("ethers");
-
-function toBigInt(v) {
-  if (typeof v === "bigint") return v;
-  if (ethers.BigNumber.isBigNumber(v)) return BigInt(v.toString());
-  return BigInt(v);
-}
 
 function parseLoanAmountsForGraph(config) {
   const sizes = parseLoanSizes(config);
@@ -51,7 +48,16 @@ async function scanOpportunitiesV5(provider, config, loanAmounts) {
     return true;
   });
   const amounts = loanAmounts.default || loanAmounts[loanToken] || [];
-  const gasCostWei = await estimateGasCostWei(provider, config);
+  const gasCostLoanToken = await estimateGasCostInLoanToken(
+    provider,
+    config,
+    loanToken,
+    config.graphAssetDecimals ?? 6
+  );
+  const defaultAavePremium = await fetchAavePremiumBps(
+    provider,
+    config.addresses?.aavePool
+  );
   const opportunities = [];
 
   for (const cycle of uniqueCycles) {
@@ -62,36 +68,41 @@ async function scanOpportunitiesV5(provider, config, loanAmounts) {
       if (!finalOut) continue;
 
       const oppStub = { loanToken, loanAmount: loanIn };
-      let premiumBps;
-      try {
-        premiumBps = pickFlashSource(config, oppStub).premiumBps;
-      } catch {
-        premiumBps = premiumBpsForSource(config.flashSource ?? 0);
-      }
+      const pick = tryPickFlashSource(config, oppStub);
+      if (pick.error) continue;
 
-      const { debt, minProfit } = calcThresholds(loanIn, config, premiumBps);
-      if (finalOut < debt + minProfit) continue;
+      const premiumBps =
+        pick.source === 0
+          ? defaultAavePremium
+          : pick.premiumBps ?? premiumBpsForSource(pick.source);
 
-      const grossProfit = finalOut - debt;
-      const netProfit = grossProfit - gasCostWei;
-      if (netProfit <= 0n) continue;
+      const scored = scoreOpportunity({
+        finalOut,
+        loanIn,
+        gasCostLoanToken,
+        config,
+        premiumBps,
+      });
+      if (!scored) continue;
 
       opportunities.push({
         cycleId: cycle.map((e) => e.id).join("->"),
         loanToken,
         loanAmount: loanIn,
         legs: cycle,
-        estimatedProfit: grossProfit,
-        netProfit,
-        gasCostWei,
+        finalOut,
+        estimatedProfit: scored.grossProfit,
+        netProfit: scored.netProfit,
+        gasCostLoanToken: scored.gasCostLoanToken,
         direction: cycle.map((e) => e.venue).join("->"),
-        flashSource: config.flashSource ?? 0,
+        flashSource: pick.source,
+        flashPick: pick,
         premiumBps: premiumBps.toString(),
       });
     }
   }
 
-  return opportunities.sort((a, b) => (a.netProfit > b.netProfit ? -1 : 1));
+  return sortByNetProfit(opportunities);
 }
 
 module.exports = {

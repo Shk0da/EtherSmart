@@ -6,7 +6,7 @@ function validateConfig(config, extraChecks = []) {
 
   if (!config.wsUrl) errors.push("WS_URL is required");
   if (!config.rpcUrl) errors.push("MAINNET_RPC_URL (or RPC_URL) is required");
-  if (!config.privateKey) errors.push("BOT_PK (or DEPLOYER_PK) is required");
+  if (!config.privateKey) errors.push("BOT_PK is required");
   if (!config.contractAddress) errors.push("ARB_CONTRACT is required");
   if (!ethers.utils.isAddress(config.contractAddress)) {
     errors.push("ARB_CONTRACT is not a valid address");

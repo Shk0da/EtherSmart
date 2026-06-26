@@ -1,7 +1,11 @@
 const { ethers } = require("ethers");
 const { batchGetAmountsOut } = require("./multicallPriceMonitor");
-const { estimateGasCostWei } = require("./gasOracle");
-const { calcThresholds, parseLoanSizes } = require("./arbFinder");
+const { estimateGasCostInLoanToken } = require("./gasOracle");
+const { fetchAavePremiumBps } = require("./aavePremium");
+const { scoreOpportunity, sortByNetProfit } = require("./opportunityMath");
+const { calcThresholds } = require("./thresholds");
+const { toBigInt } = require("./toBigInt");
+const { premiumBpsForSource } = require("./flashPicker");
 
 const CURVE_ABI = [
   "function get_dy(int128 i, int128 j, uint256 dx) external view returns (uint256)",
@@ -11,14 +15,8 @@ const BALANCER_QUERY_ABI = [
   "function queryBatchSwap(uint8 kind, tuple(bytes32 poolId, uint256 assetInIndex, uint256 assetOutIndex, uint256 amount, bytes userData)[] swaps, address[] assets, tuple(address sender, bool fromInternalBalance, address recipient, bool toInternalBalance) funds) external returns (int256[] assetDeltas)",
 ];
 
-function toBigInt(v) {
-  if (typeof v === "bigint") return v;
-  if (ethers.BigNumber.isBigNumber(v)) return BigInt(v.toString());
-  return BigInt(v);
-}
-
 function parseLoanAmountsForTriangles(config) {
-  const sizes = parseLoanSizes(config);
+  const sizes = require("./arbFinder").parseLoanSizes(config);
   const out = {};
   for (const tri of config.triangles || []) {
     out[tri.name] = sizes.map((size) =>
@@ -113,6 +111,14 @@ async function quoteLegOut(provider, config, leg, amountIn) {
   return 0n;
 }
 
+async function resolvePremiumBps(provider, config) {
+  const source = config.flashSource ?? 0;
+  if (source === 0) {
+    return fetchAavePremiumBps(provider, config.addresses?.aavePool);
+  }
+  return premiumBpsForSource(source);
+}
+
 /**
  * Three-round tri-hop scan with gas-adjusted net profit ranking.
  */
@@ -122,8 +128,20 @@ async function scanOpportunitiesV4(
   triangles,
   loanAmountsByTriangle
 ) {
+  const premiumBps = await resolvePremiumBps(provider, config);
+  const gasByToken = new Map();
   const opportunities = [];
-  const gasCostWei = await estimateGasCostWei(provider, config);
+
+  async function gasFor(loanToken, decimals) {
+    const key = loanToken.toLowerCase();
+    if (!gasByToken.has(key)) {
+      gasByToken.set(
+        key,
+        await estimateGasCostInLoanToken(provider, config, loanToken, decimals)
+      );
+    }
+    return gasByToken.get(key);
+  }
 
   for (const tri of triangles) {
     const amounts = loanAmountsByTriangle[tri.name] || [];
@@ -145,27 +163,35 @@ async function scanOpportunitiesV4(
       const finalOut = await quoteLegOut(provider, config, leg3, out2);
       if (!finalOut) continue;
 
-      const { debt, minProfit } = calcThresholds(loanIn, config);
-      if (finalOut < debt + minProfit) continue;
-
-      const grossProfit = finalOut - debt;
-      const netProfit = grossProfit - gasCostWei;
-      if (netProfit <= 0n) continue;
+      const scored = scoreOpportunity({
+        finalOut,
+        loanIn,
+        gasCostLoanToken: await gasFor(
+          tri.loanToken,
+          tri.assetDecimals ?? 6
+        ),
+        config,
+        premiumBps,
+      });
+      if (!scored) continue;
 
       opportunities.push({
         triangle: tri.name,
         loanToken: tri.loanToken,
         loanAmount: loanIn,
         legs: tri.legs,
-        estimatedProfit: grossProfit,
-        netProfit,
-        gasCostWei,
+        finalOut,
+        estimatedProfit: scored.grossProfit,
+        netProfit: scored.netProfit,
+        gasCostLoanToken: scored.gasCostLoanToken,
         direction: tri.legs.map((l) => l.venue).join("->"),
+        flashSource: config.flashSource ?? 0,
+        premiumBps: premiumBps.toString(),
       });
     }
   }
 
-  return opportunities.sort((a, b) => (a.netProfit > b.netProfit ? -1 : 1));
+  return sortByNetProfit(opportunities);
 }
 
 module.exports = {
@@ -173,4 +199,5 @@ module.exports = {
   parseLoanAmountsForTriangles,
   quoteLegOut,
   venueTarget,
+  calcThresholds,
 };

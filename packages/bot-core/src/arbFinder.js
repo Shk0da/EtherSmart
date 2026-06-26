@@ -1,6 +1,9 @@
 const { ethers } = require("ethers");
 const { batchGetAmountsOut } = require("./multicallPriceMonitor");
-const { estimateGasCostWei } = require("./gasOracle");
+const { estimateGasCostInLoanToken } = require("./gasOracle");
+const { fetchAavePremiumBps } = require("./aavePremium");
+const { scoreOpportunity, sortByNetProfit } = require("./opportunityMath");
+const { toBigInt } = require("./toBigInt");
 
 function parseLoanSizes(config) {
   const raw =
@@ -26,15 +29,6 @@ function parseLoanAmounts(config, pairs) {
   return out;
 }
 
-function calcThresholds(loanIn, config, premiumBps = 5n) {
-  const bps = BigInt(premiumBps);
-  const premium = (loanIn * bps) / 10000n;
-  const debt = loanIn + premium;
-  const minProfit =
-    (loanIn * BigInt(config.minProfitBps)) / 10000n + premium;
-  return { premium, debt, minProfit, premiumBps: bps };
-}
-
 function dexRouter(config, dex) {
   return dex === "uni"
     ? config.addresses.uniV2Router
@@ -45,6 +39,23 @@ function dexRouter(config, dex) {
  * Multi-size two-round multicall scan with gas-adjusted net profit ranking.
  */
 async function scanOpportunities(provider, config, pairs, loanAmountsByPair) {
+  const aavePremiumBps = await fetchAavePremiumBps(
+    provider,
+    config.addresses?.aavePool
+  );
+  const gasByAsset = new Map();
+
+  async function gasFor(asset, decimals) {
+    const key = asset.toLowerCase();
+    if (!gasByAsset.has(key)) {
+      gasByAsset.set(
+        key,
+        await estimateGasCostInLoanToken(provider, config, asset, decimals)
+      );
+    }
+    return gasByAsset.get(key);
+  }
+
   const leg1Requests = [];
   const leg1Meta = [];
 
@@ -86,7 +97,6 @@ async function scanOpportunities(provider, config, pairs, loanAmountsByPair) {
   }
 
   const leg2Outs = await batchGetAmountsOut(provider, config, leg2Requests);
-  const gasCostWei = await estimateGasCostWei(provider, config);
   const opportunities = [];
 
   for (let i = 0; i < leg2Meta.length; i++) {
@@ -94,34 +104,37 @@ async function scanOpportunities(provider, config, pairs, loanAmountsByPair) {
     if (!finalOut || finalOut === 0n) continue;
 
     const { pair, leg1Dex, leg2Dex, loanIn } = leg2Meta[i];
-    const { debt, minProfit } = calcThresholds(loanIn, config);
+    const scored = scoreOpportunity({
+      finalOut,
+      loanIn,
+      gasCostLoanToken: await gasFor(pair.asset, pair.assetDecimals),
+      config,
+      premiumBps: aavePremiumBps,
+    });
+    if (!scored) continue;
 
-    if (finalOut >= debt + minProfit) {
-      const grossProfit = finalOut - debt;
-      const netProfit = grossProfit - gasCostWei;
-      if (netProfit <= 0n) continue;
-
-      opportunities.push({
-        pair: pair.name,
-        asset: pair.asset,
-        bridge: pair.bridge,
-        loanAmount: loanIn,
-        leg1Dex,
-        leg2Dex,
-        estimatedProfit: grossProfit,
-        netProfit,
-        gasCostWei,
-        direction: `${leg1Dex}->${leg2Dex}`,
-      });
-    }
+    opportunities.push({
+      pair: pair.name,
+      asset: pair.asset,
+      bridge: pair.bridge,
+      loanAmount: toBigInt(loanIn),
+      leg1Dex,
+      leg2Dex,
+      finalOut: toBigInt(finalOut),
+      estimatedProfit: scored.grossProfit,
+      netProfit: scored.netProfit,
+      gasCostLoanToken: scored.gasCostLoanToken,
+      direction: `${leg1Dex}->${leg2Dex}`,
+      premiumBps: aavePremiumBps.toString(),
+    });
   }
 
-  return opportunities.sort((a, b) => (a.netProfit > b.netProfit ? -1 : 1));
+  return sortByNetProfit(opportunities);
 }
 
 module.exports = {
   scanOpportunities,
   parseLoanAmounts,
   parseLoanSizes,
-  calcThresholds,
+  calcThresholds: require("./thresholds").calcThresholds,
 };

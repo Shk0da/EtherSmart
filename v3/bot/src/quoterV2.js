@@ -8,7 +8,7 @@ const QUOTER_ABI = [
 
 /**
  * Quote Uniswap V3 exactInput via QuoterV2 staticcall.
- * @returns {bigint} amountOut
+ * @returns {bigint | null} amountOut or null on failure
  */
 async function quoteV3ExactInput(provider, path, amountIn) {
   const quoter = new ethers.Contract(
@@ -22,7 +22,7 @@ async function quoteV3ExactInput(provider, path, amountIn) {
     const amountOut = Array.isArray(result) ? result[0] : result.amountOut;
     return BigInt(amountOut.toString());
   } catch {
-    return 0n;
+    return null;
   }
 }
 

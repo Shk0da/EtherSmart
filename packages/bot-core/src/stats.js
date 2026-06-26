@@ -21,8 +21,14 @@ function createStats(config) {
 
 function recordOpportunity(stats, opp) {
   stats.opportunitiesFound += 1;
-  stats.totalEstimatedProfit += opp.estimatedProfit;
-  stats.totalNetProfit += opp.netProfit || opp.estimatedProfit;
+  const gross = typeof opp.estimatedProfit === "bigint"
+    ? opp.estimatedProfit
+    : BigInt(opp.estimatedProfit.toString());
+  const net = typeof opp.netProfit === "bigint"
+    ? opp.netProfit
+    : BigInt((opp.netProfit ?? opp.estimatedProfit).toString());
+  stats.totalEstimatedProfit += gross;
+  stats.totalNetProfit += net;
   stats.lastOpportunity = {
     pair: opp.pair || opp.triangle,
     direction: opp.direction,

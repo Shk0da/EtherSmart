@@ -58,7 +58,7 @@ flowchart TB
 
 ### Block loop (bot-core)
 
-1. `refreshContractState` — `paused()` каждые 5 блоков  
+1. `refreshContractState` — `paused()` каждый блок (interval 1)  
 2. `scanOpportunities` (V2/V3), `scanOpportunitiesV4` (tri-hop), или `scanOpportunitiesV5` (graph)  
 3. `buildPlanForOpportunity` — **version-specific** (v2/v3/v4 bot)  
 4. `simulateAndSend` — Flashbots simulate → optional send (`DRY_RUN=false`)  
@@ -420,7 +420,7 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 | V3 contract | `npm run v3:test` | 7 passing |
 | V4 contract | `npm run v4:test` | 13 passing |
 | V5 contract | `npm run v5:test` | 13 passing |
-| bot-core | `npm run core:test` | 17 passing |
+| bot-core | `npm run core:test` | 21 passing |
 | control-plane | `npm run control-plane:test` | 10 passing |
 | cli | `npm run cli:test` | 5 passing |
 | dashboard-ui | `npm run dashboard:test` | 28 passing |

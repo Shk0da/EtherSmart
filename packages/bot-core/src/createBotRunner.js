@@ -13,7 +13,10 @@ const {
   parseLoanAmountsForGraph,
 } = require("./arbFinderV5");
 const { createMempoolWatcher } = require("./mempoolWatcher");
-const { pickFlashSource, encodeFlashParams } = require("./flashPicker");
+const { tryPickFlashSource, encodeFlashParams } = require("./flashPicker");
+const { scoreOpportunity, sortByNetProfit } = require("./opportunityMath");
+const { estimateGasCostInLoanToken } = require("./gasOracle");
+const { fetchAavePremiumBps } = require("./aavePremium");
 const { createFlashbotsProvider, simulateAndSend } = require("./flashbotsSender");
 const {
   createStats,
@@ -30,10 +33,69 @@ const {
   refreshContractState,
 } = require("./contractState");
 const { createMetricsStore } = require("./metricsStore");
+const { toBigInt } = require("./toBigInt");
 
 function loadContract(config, provider, signer) {
   const artifact = JSON.parse(fs.readFileSync(config.artifactPath, "utf8"));
   return new ethers.Contract(config.contractAddress, artifact.abi, signer);
+}
+
+async function rescoreOpportunities(
+  provider,
+  config,
+  opportunities,
+  refineFinalOut
+) {
+  if (!refineFinalOut || opportunities.length === 0) return opportunities;
+
+  const aavePremiumBps = await fetchAavePremiumBps(
+    provider,
+    config.addresses?.aavePool
+  );
+  const gasByAsset = new Map();
+  const rescored = [];
+
+  for (const opp of opportunities) {
+    const pair = config.pairs?.find((p) => p.name === opp.pair);
+    if (!pair) continue;
+
+    const refined = await refineFinalOut(provider, opp, pair);
+    const finalOut = refined != null ? refined : opp.finalOut;
+    if (!finalOut) continue;
+
+    const assetKey = pair.asset.toLowerCase();
+    if (!gasByAsset.has(assetKey)) {
+      gasByAsset.set(
+        assetKey,
+        await estimateGasCostInLoanToken(
+          provider,
+          config,
+          pair.asset,
+          pair.assetDecimals
+        )
+      );
+    }
+
+    const scored = scoreOpportunity({
+      finalOut,
+      loanIn: opp.loanAmount,
+      gasCostLoanToken: gasByAsset.get(assetKey),
+      config,
+      premiumBps: aavePremiumBps,
+    });
+    if (!scored) continue;
+
+    rescored.push({
+      ...opp,
+      finalOut: toBigInt(finalOut),
+      estimatedProfit: scored.grossProfit,
+      netProfit: scored.netProfit,
+      gasCostLoanToken: scored.gasCostLoanToken,
+      premiumBps: aavePremiumBps.toString(),
+    });
+  }
+
+  return sortByNetProfit(rescored);
 }
 
 async function createBotRunner({
@@ -41,6 +103,7 @@ async function createBotRunner({
   buildPlanForOpportunity,
   extraValidateChecks = [],
   extraLogFields = {},
+  refineOpportunityFinalOut = null,
 }) {
   validateConfig(config, extraValidateChecks);
 
@@ -134,7 +197,7 @@ async function createBotRunner({
   });
 
   async function runScan(blockNumber, provider, block) {
-    const opportunities = isV5
+    let opportunities = isV5
       ? await scanOpportunitiesV5(provider, config, loanAmounts)
       : isV4
         ? await scanOpportunitiesV4(
@@ -143,11 +206,16 @@ async function createBotRunner({
             config.triangles,
             loanAmounts
           )
-        : await scanOpportunities(
+        : await rescoreOpportunities(
             provider,
             config,
-            config.pairs,
-            loanAmounts
+            await scanOpportunities(
+              provider,
+              config,
+              config.pairs,
+              loanAmounts
+            ),
+            refineOpportunityFinalOut
           );
 
     if (opportunities.length === 0) {
@@ -183,7 +251,14 @@ async function createBotRunner({
     let flashParams = "0x";
     let flashSource = config.flashSource ?? 0;
     if (isV5) {
-      const pick = pickFlashSource(config, best);
+      const pick = best.flashPick || tryPickFlashSource(config, best);
+      if (pick.error) {
+        log.warn(
+          { blockNumber, error: pick.error },
+          "flash source invalid for opportunity, skip"
+        );
+        return;
+      }
       flashSource = pick.source;
       flashParams = encodeFlashParams(pick.flashParams);
     }
@@ -222,7 +297,7 @@ async function createBotRunner({
     stats.blocksScanned += 1;
     touchBlock(stats, blockNumber);
 
-    await refreshContractState(arb, contractState, blockNumber);
+    await refreshContractState(arb, contractState, blockNumber, 1);
 
     if (contractState.paused) {
       log.debug({ blockNumber }, "contract paused, skip");
@@ -233,7 +308,7 @@ async function createBotRunner({
     const block = await provider.getBlock(blockNumber);
 
     try {
-      if (pendingMempoolScan && isV5) {
+      if (pendingMempoolScan && (isV5 || isV4)) {
         pendingMempoolScan = false;
         log.debug({ blockNumber }, "mempool-triggered scan");
       }

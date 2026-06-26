@@ -9,7 +9,7 @@ async function refreshContractState(
   arbContract,
   state,
   blockNumber,
-  intervalBlocks = 5
+  intervalBlocks = 1
 ) {
   if (
     state.lastRefreshBlock > 0 &&

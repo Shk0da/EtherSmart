@@ -1,4 +1,4 @@
-require("dotenv").config({ path: require("path").join(__dirname, "..", ".env") });
+require("dotenv").config({ path: require("path").join(__dirname, "..", "..", ".env") });
 
 const path = require("path");
 const { ethers } = require("ethers");
@@ -77,7 +77,7 @@ module.exports = {
   rpcUrl: process.env.MAINNET_RPC_URL || process.env.RPC_URL || "",
   chainId: parseInt(process.env.CHAIN_ID || "1", 10),
   contractAddress: process.env.ARB_CONTRACT || "",
-  privateKey: process.env.BOT_PK || process.env.DEPLOYER_PK || "",
+  privateKey: process.env.BOT_PK || "",
   flashbotsAuthKey: process.env.FLASHBOTS_AUTH_PK || "",
   flashbotsRelay:
     process.env.FLASHBOTS_RELAY || "https://relay.flashbots.net",

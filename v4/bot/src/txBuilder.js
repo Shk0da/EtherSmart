@@ -4,6 +4,7 @@ const {
   calcThresholds,
   quoteLegOut,
   venueTarget,
+  premiumBpsForSource,
 } = require("@ethersmart/bot-core");
 const { LegType } = require("./legTypes");
 const { encodeV3Path, FEE_3000 } = require("./v3Path");
@@ -58,7 +59,12 @@ function legTarget(leg) {
 }
 
 async function buildPlanForOpportunity(provider, opportunity, block) {
-  const { minProfit } = calcThresholds(opportunity.loanAmount, config);
+  const premiumBps = premiumBpsForSource(config.flashSource ?? 0);
+  const { minProfit } = calcThresholds(
+    opportunity.loanAmount,
+    config,
+    premiumBps
+  );
   const deadline = block.timestamp + 120;
   const legs = [];
   let amountIn = opportunity.loanAmount;

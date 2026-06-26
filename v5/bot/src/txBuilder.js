@@ -4,8 +4,9 @@ const {
   calcThresholds,
   quoteLegOut,
   venueTarget,
-  pickFlashSource,
+  tryPickFlashSource,
 } = require("@ethersmart/bot-core");
+const { encodeV3Path, FEE_3000 } = require("./v3Path");
 const {
   ADAPTER_V2,
   ADAPTER_V3,
@@ -44,6 +45,10 @@ function encodeStepData(leg) {
       ]
     );
   }
+  if (leg.venue === "uniV3") {
+    const fee = leg.v3Fee || FEE_3000;
+    return encodeV3Path([leg.tokenIn, leg.tokenOut], [fee]);
+  }
   throw new Error(`Unsupported venue: ${leg.venue}`);
 }
 
@@ -62,7 +67,8 @@ function stepTarget(leg) {
 }
 
 async function buildPlanForOpportunity(provider, opportunity, block) {
-  const pick = pickFlashSource(config, opportunity);
+  const pick = opportunity.flashPick || tryPickFlashSource(config, opportunity);
+  if (pick.error) throw new Error(pick.error);
   const { minProfit } = calcThresholds(
     opportunity.loanAmount,
     config,

@@ -12,7 +12,14 @@ function applySlippage(amount, bps) {
 
 async function buildPlanForOpportunity(provider, opportunity, block) {
   const pair = config.pairs.find((p) => p.name === opportunity.pair);
-  const { minProfit } = calcThresholds(opportunity.loanAmount, config);
+  const premiumBps = opportunity.premiumBps
+    ? BigInt(opportunity.premiumBps)
+    : 5n;
+  const { minProfit } = calcThresholds(
+    opportunity.loanAmount,
+    config,
+    premiumBps
+  );
 
   const deadline = block.timestamp + 120;
   const router1 =

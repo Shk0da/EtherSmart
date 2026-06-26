@@ -1,4 +1,6 @@
 const { ethers } = require("ethers");
+const { batchGetAmountsOut } = require("./multicallPriceMonitor");
+const { toBigInt } = require("./toBigInt");
 
 async function resolveTxFees(provider, config, gasLimit = null) {
   const feeData = await provider.getFeeData();
@@ -29,11 +31,14 @@ async function resolveTxFees(provider, config, gasLimit = null) {
   return { maxFeePerGas, maxPriorityFeePerGas, type: 2 };
 }
 
-async function estimateGasLimit(provider, txRequest, fallback = 900000) {
+async function estimateGasLimit(provider, txRequest, fallback = 900000, log = null) {
   try {
     const estimate = await provider.estimateGas(txRequest);
     return estimate.mul(120).div(100);
-  } catch {
+  } catch (err) {
+    if (log) {
+      log.warn({ err: err.message }, "estimateGas failed, using fallback");
+    }
     return ethers.BigNumber.from(fallback);
   }
 }
@@ -44,4 +49,47 @@ async function estimateGasCostWei(provider, config) {
   return BigInt(gasLimit.mul(fees.maxFeePerGas).toString());
 }
 
-module.exports = { resolveTxFees, estimateGasLimit, estimateGasCostWei };
+/**
+ * Convert estimated gas (wei) into loan-token atoms via WETH → loanToken V2 quote.
+ */
+async function estimateGasCostInLoanToken(
+  provider,
+  config,
+  loanToken,
+  loanDecimals = 6
+) {
+  const gasWei = await estimateGasCostWei(provider, config);
+  const weth = config.addresses?.weth;
+  const router = config.addresses?.uniV2Router;
+
+  if (!weth || !router || !loanToken) {
+    return toBigInt(ethers.utils.parseUnits("10000", loanDecimals));
+  }
+
+  if (weth.toLowerCase() === loanToken.toLowerCase()) {
+    return gasWei;
+  }
+
+  try {
+    const amounts = await batchGetAmountsOut(provider, config, [
+      {
+        target: router,
+        amountIn: ethers.BigNumber.from(gasWei.toString()),
+        path: [weth, loanToken],
+      },
+    ]);
+    const quoted = amounts[0] ? toBigInt(amounts[0]) : 0n;
+    if (quoted > 0n) return quoted;
+  } catch {
+    // fall through to conservative estimate
+  }
+
+  return toBigInt(ethers.utils.parseUnits("10000", loanDecimals));
+}
+
+module.exports = {
+  resolveTxFees,
+  estimateGasLimit,
+  estimateGasCostWei,
+  estimateGasCostInLoanToken,
+};

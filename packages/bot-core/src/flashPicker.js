@@ -87,6 +87,14 @@ function pickFlashSource(config, opportunity) {
   };
 }
 
+function tryPickFlashSource(config, opportunity) {
+  try {
+    return pickFlashSource(config, opportunity);
+  } catch (err) {
+    return { error: err.message };
+  }
+}
+
 function encodeFlashParams(flashParams) {
   if (!flashParams || flashParams === "0x") return "0x";
   return ethers.utils.defaultAbiCoder.encode(
@@ -98,6 +106,7 @@ function encodeFlashParams(flashParams) {
 module.exports = {
   FlashSource,
   pickFlashSource,
+  tryPickFlashSource,
   encodeFlashParams,
   PREMIUM_BPS,
   premiumBpsForSource,

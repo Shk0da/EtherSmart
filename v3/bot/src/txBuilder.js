@@ -78,6 +78,7 @@ async function buildMixedPlan({
       bridge,
     ]);
     const v3Out = await quoteV3ExactInput(provider, pathToAsset, out1);
+    if (v3Out == null) throw new Error("V3 quote failed for leg2");
 
     return {
       leg1Kind: LegKind.V2,
@@ -96,6 +97,7 @@ async function buildMixedPlan({
   }
 
   const v3Out = await quoteV3ExactInput(provider, pathToBridge, loanAmount);
+  if (v3Out == null) throw new Error("V3 quote failed for leg1");
   const out2 = await quoteV2Out(provider, routerV2Leg2, v3Out, [
     bridge,
     asset,
@@ -119,7 +121,14 @@ async function buildMixedPlan({
 
 async function buildPlanForOpportunity(provider, opportunity, block) {
   const pair = config.pairs.find((p) => p.name === opportunity.pair);
-  const { minProfit } = calcThresholds(opportunity.loanAmount, config);
+  const premiumBps = opportunity.premiumBps
+    ? BigInt(opportunity.premiumBps)
+    : 5n;
+  const { minProfit } = calcThresholds(
+    opportunity.loanAmount,
+    config,
+    premiumBps
+  );
   const deadline = block.timestamp + 120;
 
   const routerV2Leg1 = DEX_ROUTERS[opportunity.leg1Dex]();
@@ -160,4 +169,10 @@ async function buildPlanForOpportunity(provider, opportunity, block) {
   });
 }
 
-module.exports = { buildPlanForOpportunity, buildV2Plan, buildMixedPlan };
+module.exports = {
+  buildPlanForOpportunity,
+  buildV2Plan,
+  buildMixedPlan,
+  quoteV2Out,
+  DEX_ROUTERS,
+};
