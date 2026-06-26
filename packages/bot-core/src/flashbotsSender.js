@@ -85,6 +85,7 @@ async function simulateAndSend({
   log,
   stats,
   metricsStore,
+  metricsMeta = {},
 }) {
   const { signedTx, gasLimit } = await signArbitrageTx({
     config,
@@ -136,6 +137,7 @@ async function simulateAndSend({
     block: primaryBlock,
     coinbaseDiff: String(simulation.coinbaseDiff || 0),
     totalGasUsed: String(simulation.totalGasUsed || 0),
+    ...metricsMeta,
   });
 
   if (config.dryRun) {
@@ -153,6 +155,7 @@ async function simulateAndSend({
   metricsStore?.record("bundle_submitted", {
     blocks,
     count: submissions.length,
+    ...metricsMeta,
   });
 
   const resolutions = await Promise.all(
@@ -161,7 +164,10 @@ async function simulateAndSend({
         const resolution = await response.wait();
         if (resolution === 0) {
           stats.bundlesIncluded += 1;
-          metricsStore?.record("bundle_included", { blockNum });
+          metricsStore?.record("bundle_included", {
+            block: blockNum,
+            ...metricsMeta,
+          });
           log.info({ blockNum, resolution }, "bundle included");
         } else {
           log.debug({ blockNum, resolution }, "bundle not included");

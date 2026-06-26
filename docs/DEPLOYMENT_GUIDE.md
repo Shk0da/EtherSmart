@@ -580,6 +580,7 @@ docker compose up v2-bot   # v3-bot, v4-bot, v5-bot
 
 | Документ | Содержание |
 |----------|------------|
+| [docs/DASHBOARD.md](DASHBOARD.md) | **Панель управления** — start/stop, deploy, PnL, балансы |
 | [v2/DEPLOY.md](../v2/DEPLOY.md) | Краткий деплой V2 |
 | [v3/DEPLOY.md](../v3/DEPLOY.md) | Краткий деплой V3 |
 | [v4/DEPLOY.md](../v4/DEPLOY.md) | Краткий деплой V4 |

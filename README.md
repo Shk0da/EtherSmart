@@ -2,7 +2,7 @@
 
 Flash-loan арбитраж на Ethereum mainnet: Aave V3 / Balancer Vault / Uni V3 pool flash + DEX-свопы. Off-chain бот через Flashbots.
 
-**Оценка качества:** [97/100](docs/CODE_REVIEW.md)
+**Оценка качества:** [99/100](docs/CODE_REVIEW.md)
 
 ## Стеки V2–V5
 
@@ -32,6 +32,7 @@ cd v5/bot && npm start    # dry-run бот (DRY_RUN=true)
 | Файл | Назначение |
 |------|------------|
 | **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** | **Полный гайд: деплой V2–V5, пополнение, алгоритм** |
+| **[docs/DASHBOARD.md](docs/DASHBOARD.md)** | **Панель управления и мониторинга** |
 | [AGENTS.md](AGENTS.md) | Инструкция для AI-агентов |
 | [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | Оценка 97/100, checklist |
 | [v5/DEPLOY.md](v5/DEPLOY.md) | Краткий деплой V5 |

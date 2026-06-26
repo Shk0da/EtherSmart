@@ -4,6 +4,8 @@ package-lock.json
 **/cache/
 **/artifacts/
 **/logs/
+**/*.db
+packages/control-plane/data/*.db
 
 # Legacy root artifacts (if any remain)
 cache/

@@ -46,3 +46,32 @@ services:
     restart: unless-stopped
     volumes:
       - ./v5/logs:/app/v5/logs
+
+  control-plane:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.control-plane
+    env_file:
+      - packages/control-plane/.env
+    ports:
+      - "3001:3001"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./v2:/app/v2
+      - ./v3:/app/v3
+      - ./v4:/app/v4
+      - ./v5:/app/v5
+    environment:
+      - CONTROL_MODE=docker
+      - REPO_ROOT=/app
+    restart: unless-stopped
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.dashboard
+    ports:
+      - "3000:3000"
+    depends_on:
+      - control-plane
+    restart: unless-stopped

@@ -5,6 +5,8 @@
   "description": "Flash-loan arbitrage — HonestFlashArb V2 through V5",
   "workspaces": [
     "packages/bot-core",
+    "packages/control-plane",
+    "packages/dashboard-ui",
     "v2",
     "v3",
     "v4",
@@ -32,6 +34,10 @@
     "v5:deploy": "npm run deploy -w ethersmart-v5",
     "v5:bot:test": "npm run test -w ethersmart-v5-bot",
     "core:test": "npm run test -w @ethersmart/bot-core",
-    "test:all": "npm run v2:test && npm run v3:test && npm run v4:test && npm run v5:test && npm run core:test && npm run v2:bot:test && npm run v3:bot:test && npm run v4:bot:test && npm run v5:bot:test"
+    "control-plane:test": "npm run test -w @ethersmart/control-plane",
+    "control-plane:start": "npm run start -w @ethersmart/control-plane",
+    "dashboard:dev": "npm run dev -w @ethersmart/dashboard-ui",
+    "dashboard:build": "npm run build -w @ethersmart/dashboard-ui",
+    "test:all": "npm run v2:test && npm run v3:test && npm run v4:test && npm run v5:test && npm run core:test && npm run control-plane:test && npm run v2:bot:test && npm run v3:bot:test && npm run v4:bot:test && npm run v5:bot:test"
   }
 }

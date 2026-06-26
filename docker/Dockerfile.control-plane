@@ -1,0 +1,20 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY packages/control-plane/package.json ./packages/control-plane/
+RUN npm install -w @ethersmart/control-plane --omit=dev
+
+COPY packages/control-plane ./packages/control-plane
+COPY v2 v2
+COPY v3 v3
+COPY v4 v4
+COPY v5 v5
+COPY package.json ./
+
+ENV REPO_ROOT=/app
+ENV CONTROL_MODE=docker
+
+EXPOSE 3001
+CMD ["npm", "run", "start", "-w", "@ethersmart/control-plane"]

@@ -190,6 +190,14 @@ async function createBotRunner({
 
     const runConfig = { ...config, flashSource };
 
+    const metricsMeta = {
+      pair: best.pair || best.triangle || best.cycleId,
+      direction: best.direction,
+      loanAmount: best.loanAmount.toString(),
+      netProfit: best.netProfit.toString(),
+      grossProfit: best.estimatedProfit.toString(),
+    };
+
     const result = await simulateAndSend({
       config: runConfig,
       flashbotsProvider: flashbots,
@@ -204,6 +212,7 @@ async function createBotRunner({
       log,
       stats,
       metricsStore,
+      metricsMeta,
     });
 
     if (result.ok) stats.bundlesSimulated += 1;

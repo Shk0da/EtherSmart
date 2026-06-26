@@ -1,0 +1,12 @@
+FROM node:20-alpine AS build
+WORKDIR /app
+COPY packages/dashboard-ui/package.json ./packages/dashboard-ui/
+WORKDIR /app/packages/dashboard-ui
+RUN npm install
+COPY packages/dashboard-ui ./
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/packages/dashboard-ui/dist /usr/share/nginx/html
+COPY docker/nginx-dashboard.conf /etc/nginx/conf.d/default.conf
+EXPOSE 3000

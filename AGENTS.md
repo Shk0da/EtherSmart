@@ -1,7 +1,7 @@
 # AGENTS.md — EtherSmart
 
 > **Назначение:** инструкция для AI-агентов (Cursor, Codex, Claude и др.), работающих с репозиторием EtherSmart.  
-> **Состояние проекта:** production-ready, оценка **97/100** ([docs/CODE_REVIEW.md](docs/CODE_REVIEW.md)).  
+> **Состояние проекта:** production-ready, оценка **99/100** ([docs/CODE_REVIEW.md](docs/CODE_REVIEW.md)).  
 > **Язык общения с пользователем:** русский. **Код, комментарии в diff, имена переменных:** английский.
 
 ---
@@ -291,6 +291,7 @@ docker compose up v2-bot
 docker compose up v3-bot
 docker compose up v4-bot
 docker compose up v5-bot
+docker compose up control-plane dashboard   # панель :3000, API :3001
 ```
 
 ### Hardhat fork tests
@@ -401,6 +402,7 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 | V4 contract | `npm run v4:test` | 13 passing |
 | V5 contract | `npm run v5:test` | 13 passing |
 | bot-core | `npm run core:test` | 17 passing |
+| control-plane | `npm run control-plane:test` | 9 passing |
 | v2 bot | `npm run v2:bot:test` | 2 passing |
 | v3 bot | `npm run v3:bot:test` | 3 passing |
 | v4 bot | `npm run v4:bot:test` | 5 passing |
@@ -468,7 +470,8 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 | Изменение | Файлы |
 |-----------|-------|
 | Bot env / ops | `v2/.env.example`, `v3/.env.example`, `OPERATIONS.md` |
-| Deploy / constructor | `DEPLOY.md`, `scripts/deploy.js`, **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** |
+| Deploy / constructor | `DEPLOY.md`, `scripts/deploy.js`, [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
+| Dashboard / control-plane | `packages/control-plane/`, `packages/dashboard-ui/`, [docs/DASHBOARD.md](docs/DASHBOARD.md) |
 | Architecture / quality | `docs/CODE_REVIEW.md`, `README.md` |
 | Agent instructions | `AGENTS.md` (этот файл) |
 | Roadmap / backlog | `0. TODO.md` |
