@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api, setToken } from "./api";
+import { api, setToken } from "../api";
 
 export default function LoginPage() {
   const [password, setPassword] = useState("");

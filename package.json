@@ -7,6 +7,7 @@
     "packages/bot-core",
     "packages/control-plane",
     "packages/dashboard-ui",
+    "packages/cli",
     "v2",
     "v3",
     "v4",
@@ -16,6 +17,9 @@
     "v4/bot",
     "v5/bot"
   ],
+  "bin": {
+    "ethersmart": "./bin/ethersmart.js"
+  },
   "scripts": {
     "v2:compile": "npm run compile -w ethersmart-v2",
     "v2:test": "npm run test -w ethersmart-v2",
@@ -35,9 +39,12 @@
     "v5:bot:test": "npm run test -w ethersmart-v5-bot",
     "core:test": "npm run test -w @ethersmart/bot-core",
     "control-plane:test": "npm run test -w @ethersmart/control-plane",
+    "cli:test": "npm run test -w @ethersmart/cli",
+    "es": "node bin/ethersmart.js",
     "control-plane:start": "npm run start -w @ethersmart/control-plane",
     "dashboard:dev": "npm run dev -w @ethersmart/dashboard-ui",
     "dashboard:build": "npm run build -w @ethersmart/dashboard-ui",
-    "test:all": "npm run v2:test && npm run v3:test && npm run v4:test && npm run v5:test && npm run core:test && npm run control-plane:test && npm run v2:bot:test && npm run v3:bot:test && npm run v4:bot:test && npm run v5:bot:test"
+    "dashboard:test": "npm run test -w @ethersmart/dashboard-ui",
+    "test:all": "npm run v2:test && npm run v3:test && npm run v4:test && npm run v5:test && npm run core:test && npm run control-plane:test && npm run cli:test && npm run dashboard:test && npm run v2:bot:test && npm run v3:bot:test && npm run v4:bot:test && npm run v5:bot:test"
   }
 }

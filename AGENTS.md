@@ -94,6 +94,15 @@ EtherSmart/
 │       │   ├── healthServer.js
 │       │   └── ...
 │       └── test/
+│   ├── control-plane/        ← @ethersmart/control-plane — REST API, WS, indexer
+│   │   ├── src/
+│   │   └── test/
+│   ├── dashboard-ui/         ← @ethersmart/dashboard-ui — React SPA
+│   │   ├── src/
+│   │   └── test/             ← imports, routes, api, vite, build
+│   └── cli/                  ← @ethersmart/cli — ethersmart CLI
+│       ├── src/
+│       └── test/
 ├── v2/
 │   ├── contracts/HonestFlashArbV2.sol
 │   ├── test/                 ← mock + fork (fork pending без RPC)
@@ -158,6 +167,9 @@ EtherSmart/
 | V5 контракт | `v5/contracts/HonestFlashArbV5.sol` + `v5/test/` |
 | Деплой mainnet адресов | `v2/scripts/deploy.js`, `v3/scripts/deploy.js`, `v4/scripts/deploy.js`, `v5/scripts/deploy.js` |
 | Runbook ops | `v2/bot/OPERATIONS.md`, `v3/bot/OPERATIONS.md`, `v4/bot/OPERATIONS.md`, `v5/bot/OPERATIONS.md` |
+| Dashboard UI (страницы, роутинг, api client) | `packages/dashboard-ui/src/`, `packages/dashboard-ui/test/` |
+| Control-plane API | `packages/control-plane/src/`, `packages/control-plane/test/` |
+| CLI start/stop | `packages/cli/src/` |
 
 **Не дублируй** код между `v2/bot` и `v3/bot`, если это не version-specific — выноси в `bot-core`.
 
@@ -269,6 +281,9 @@ npm run v3:test
 npm run v4:test
 npm run v5:test
 npm run core:test
+npm run control-plane:test
+npm run cli:test
+npm run dashboard:test
 npm run v2:bot:test
 npm run v3:bot:test
 npm run v4:bot:test
@@ -288,10 +303,14 @@ cd v5/bot && npm start
 
 # Docker
 docker compose up v2-bot
-docker compose up v3-bot
-docker compose up v4-bot
-docker compose up v5-bot
-docker compose up control-plane dashboard   # панель :3000, API :3001
+docker compose up control-plane dashboard
+
+# CLI (local processes)
+npm run es -- status
+npm run es -- start stack      # API + UI
+npm run es -- start v5         # bot only
+npm run es -- stop bots
+npm run es -- --docker start v5
 ```
 
 ### Hardhat fork tests
@@ -403,6 +422,8 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 | V5 contract | `npm run v5:test` | 13 passing |
 | bot-core | `npm run core:test` | 17 passing |
 | control-plane | `npm run control-plane:test` | 9 passing |
+| cli | `npm run cli:test` | 5 passing |
+| dashboard-ui | `npm run dashboard:test` | 28 passing |
 | v2 bot | `npm run v2:bot:test` | 2 passing |
 | v3 bot | `npm run v3:bot:test` | 3 passing |
 | v4 bot | `npm run v4:bot:test` | 5 passing |
@@ -411,6 +432,19 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 **Node test runner:** `node --test`, не Jest.
 
 При добавлении bot-core модулей — unit-тест обязателен. При изменении `txBuilder` — тест encode/slippage/path если возможно без fork.
+
+### Dashboard UI (`packages/dashboard-ui/test/`)
+
+| Файл | Что проверяет |
+|------|----------------|
+| `imports.test.mjs` | Все relative imports резолвятся; `pages/*` → `../api`, `Layout.jsx`/`App.jsx` → `./api` |
+| `routes.test.mjs` | Роуты в `App.jsx`, NavLink в `Layout.jsx`, `index.html`, `main.jsx` |
+| `api.test.mjs` | `getToken`/`setToken`/`clearToken`, Bearer header, 401/429/5xx |
+| `viteConfig.test.mjs` | `127.0.0.1:3000`, `strictPort`, proxy `/api` → `:3001` + WS |
+| `modules.test.mjs` | Наличие страниц/хуков, default export, live feed + login wiring |
+| `build.test.mjs` | `vite build` → `dist/` с JS/CSS (ловит сломанные импорты в prod) |
+
+Новая страница: добавить в `App.jsx`, `Layout.jsx` (если в меню), `test/helpers.mjs` (`EXPECTED_ROUTES`, `LAYOUT_NAV_PATHS`), прогнать `npm run dashboard:test`.
 
 ---
 
@@ -471,7 +505,7 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 |-----------|-------|
 | Bot env / ops | `v2/.env.example`, `v3/.env.example`, `OPERATIONS.md` |
 | Deploy / constructor | `DEPLOY.md`, `scripts/deploy.js`, [docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md) |
-| Dashboard / control-plane | `packages/control-plane/`, `packages/dashboard-ui/`, [docs/DASHBOARD.md](docs/DASHBOARD.md) |
+| Dashboard / control-plane | `packages/control-plane/`, `packages/dashboard-ui/`, `packages/cli/`, [docs/DASHBOARD.md](docs/DASHBOARD.md) |
 | Architecture / quality | `docs/CODE_REVIEW.md`, `README.md` |
 | Agent instructions | `AGENTS.md` (этот файл) |
 | Roadmap / backlog | `0. TODO.md` |
@@ -490,6 +524,7 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 | Tip / 21000 | 40× undertip | tip / `estimatedArbGas` |
 | Duplicate getAllPrices + scan | 2× RPC | use `scanOpportunities` only |
 | Old V3 deploy 5 args | verify fail | 4 args constructor |
+| `pages/Foo.jsx` imports `./api` | Vite runtime error | use `../api`; `Layout` uses `./api` |
 
 ---
 
@@ -532,6 +567,13 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 1. `config.js` → `pairs[]` + addresses
 2. Whitelist token/router **on-chain** (V3 dynamic / V2 redeploy)
 3. Тест scan с mock или fork
+
+### «Изменить dashboard UI»
+
+1. Правка `packages/dashboard-ui/src/` (+ proxy в `vite.config.js` если новый API path)
+2. Обнови `test/helpers.mjs` при новых роутах/страницах
+3. `npm run dashboard:test` (imports + build обязательны)
+4. Для ручной проверки: `npm run es -- start stack` → http://127.0.0.1:3000
 
 ### «Поднять production»
 

@@ -7,7 +7,7 @@ REST API + optional static UI for bot orchestration, metrics, deploy.
 ```bash
 cd packages/control-plane
 copy .env.example .env
-# Set DASHBOARD_PASSWORD (min 8 chars; not "changeme" in production)
+# Set DASHBOARD_PASSWORD (min 8 chars recommended; default dev password is 12345)
 npm install
 npm start
 ```

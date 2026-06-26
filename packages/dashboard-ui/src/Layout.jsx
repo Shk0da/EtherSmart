@@ -1,5 +1,5 @@
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
-import { clearToken } from "../api";
+import { clearToken } from "./api";
 import { useEffect } from "react";
 
 export default function Layout() {

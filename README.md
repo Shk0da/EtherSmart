@@ -25,6 +25,12 @@ npm install
 npm run test:all          # полный прогон
 npm run v5:test           # только V5 контракт
 cd v5/bot && npm start    # dry-run бот (DRY_RUN=true)
+
+# CLI — боты, API, dashboard
+npm run es -- help
+npm run es -- status
+npm run es -- start stack   # API :3001 + UI :3000
+npm run es -- start v5
 ```
 
 ## Документация
@@ -33,6 +39,8 @@ cd v5/bot && npm start    # dry-run бот (DRY_RUN=true)
 |------|------------|
 | **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** | **Полный гайд: деплой V2–V5, пополнение, алгоритм** |
 | **[docs/DASHBOARD.md](docs/DASHBOARD.md)** | **Панель управления и мониторинга** |
+| CLI | `npm run es -- help` — боты, UI, API |
+| UI tests | `npm run dashboard:test` — 28 тестов (imports, routes, build) |
 | [AGENTS.md](AGENTS.md) | Инструкция для AI-агентов |
 | [docs/CODE_REVIEW.md](docs/CODE_REVIEW.md) | Оценка 97/100, checklist |
 | [v5/DEPLOY.md](v5/DEPLOY.md) | Краткий деплой V5 |

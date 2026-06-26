@@ -116,11 +116,14 @@ function abs(p) {
   return path.join(repoRoot, p);
 }
 
+const DEFAULT_DASHBOARD_PASSWORD = "12345";
+const WEAK_DASHBOARD_PASSWORDS = new Set(["changeme", DEFAULT_DASHBOARD_PASSWORD]);
+
 const isProduction = process.env.NODE_ENV === "production";
 
 function validateStartup() {
-  const pwd = process.env.DASHBOARD_PASSWORD || "changeme";
-  if (isProduction && pwd === "changeme") {
+  const pwd = process.env.DASHBOARD_PASSWORD || DEFAULT_DASHBOARD_PASSWORD;
+  if (isProduction && WEAK_DASHBOARD_PASSWORDS.has(pwd)) {
     throw new Error(
       "DASHBOARD_PASSWORD must be set to a strong secret in production"
     );
@@ -138,7 +141,7 @@ module.exports = {
   abs,
   port: parseInt(process.env.DASHBOARD_PORT || "3001", 10),
   bind: process.env.DASHBOARD_BIND || "127.0.0.1",
-  password: process.env.DASHBOARD_PASSWORD || "changeme",
+  password: process.env.DASHBOARD_PASSWORD || DEFAULT_DASHBOARD_PASSWORD,
   controlMode: process.env.CONTROL_MODE || "process",
   rpcUrl: process.env.MAINNET_RPC_URL || "",
   corsOrigin: process.env.CORS_ORIGIN || "http://127.0.0.1:3000",

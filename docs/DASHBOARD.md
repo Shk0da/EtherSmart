@@ -174,6 +174,12 @@ Nginx/Caddy перед UI с TLS; control-plane на localhost.
 ### Local (process mode)
 
 ```bash
+npm run es -- start stack    # API :3001 + UI :3000
+npm run es -- start v5
+npm run es -- status
+```
+
+Or manually:
 # Terminal 1 — API
 cd packages/control-plane
 copy .env.example .env

@@ -6,6 +6,7 @@ package-lock.json
 **/logs/
 **/*.db
 packages/control-plane/data/*.db
+.ethersmart/
 
 # Legacy root artifacts (if any remain)
 cache/
