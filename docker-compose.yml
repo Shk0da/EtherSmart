@@ -34,3 +34,15 @@ services:
     restart: unless-stopped
     volumes:
       - ./v4/logs:/app/v4/logs
+
+  v5-bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.v5-bot
+    env_file:
+      - v5/.env
+    ports:
+      - "8790:8790"
+    restart: unless-stopped
+    volumes:
+      - ./v5/logs:/app/v5/logs

@@ -20,11 +20,18 @@ async function signArbitrageTx({
   asset,
   loanAmount,
   plan,
+  flashParams,
   signer,
   httpProvider,
 }) {
   let populated;
-  if (config.version === "v4") {
+  if (config.version === "v5") {
+    populated = await arbContract.populateTransaction.startArbitrage(
+      config.flashSource ?? 0,
+      plan,
+      flashParams || "0x"
+    );
+  } else if (config.version === "v4") {
     populated = await arbContract.populateTransaction.startArbitrage(
       config.flashSource ?? 0,
       plan
@@ -71,6 +78,7 @@ async function simulateAndSend({
   asset,
   loanAmount,
   plan,
+  flashParams,
   signer,
   httpProvider,
   baseBlock,
@@ -84,6 +92,7 @@ async function simulateAndSend({
     asset,
     loanAmount,
     plan,
+    flashParams,
     signer,
     httpProvider,
   });
@@ -168,4 +177,8 @@ async function simulateAndSend({
   return { ok: true, simulation, resolutions, targetBlocks: blocks };
 }
 
-module.exports = { createFlashbotsProvider, simulateAndSend };
+module.exports = {
+  createFlashbotsProvider,
+  simulateAndSend,
+  signArbitrageTx,
+};

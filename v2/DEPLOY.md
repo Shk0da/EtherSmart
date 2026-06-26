@@ -1,5 +1,7 @@
 # Деплой HonestFlashArbV2
 
+> **Полное руководство (все версии, пополнение, алгоритм):** [docs/DEPLOYMENT_GUIDE.md](../docs/DEPLOYMENT_GUIDE.md)
+
 Инструкция для каталога **`v2/`**. V3: [../v3/DEPLOY.md](../v3/DEPLOY.md).
 
 > Контракт не приносит прибыль сам — нужен бот из `v2/bot/`.

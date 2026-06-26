@@ -1,0 +1,12 @@
+FROM node:20-bookworm-slim
+WORKDIR /app
+COPY package.json package-lock.json* ./
+COPY packages/bot-core/package.json packages/bot-core/
+COPY v5/package.json v5/
+COPY v5/bot/package.json v5/bot/
+RUN npm install --workspace=@ethersmart/bot-core --workspace=ethersmart-v5-bot
+COPY packages/bot-core packages/bot-core
+COPY v5/bot v5/bot
+COPY v5/artifacts v5/artifacts
+WORKDIR /app/v5/bot
+CMD ["node", "src/index.js"]

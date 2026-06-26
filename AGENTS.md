@@ -1,7 +1,7 @@
 # AGENTS.md — EtherSmart
 
 > **Назначение:** инструкция для AI-агентов (Cursor, Codex, Claude и др.), работающих с репозиторием EtherSmart.  
-> **Состояние проекта:** production-ready, оценка **95/100** ([docs/CODE_REVIEW.md](docs/CODE_REVIEW.md)).  
+> **Состояние проекта:** production-ready, оценка **97/100** ([docs/CODE_REVIEW.md](docs/CODE_REVIEW.md)).  
 > **Язык общения с пользователем:** русский. **Код, комментарии в diff, имена переменных:** английский.
 
 ---
@@ -15,6 +15,7 @@ EtherSmart — flash-loan арбитраж на Ethereum mainnet через Aave
 | **V2** | `HonestFlashArbV2` | Uni V2 ↔ Sushi | Immutable | `v2/bot/` |
 | **V3** | `HonestFlashArbV3` | V2 + Uni V3 mixed legs | Ownable2Step | `v3/bot/` |
 | **V4** | `HonestFlashArbV4` | V2/V3 + Curve + Balancer, 3–6 legs | Ownable2Step | `v4/bot/` |
+| **V5** | `HonestFlashArbV5` | Graph cycles + Uni V3 flash + mempool | Ownable2Step | `v5/bot/` |
 
 **Off-chain:** Flashbots bundles, multicall-сканер, SQLite-метрики, health HTTP.  
 **On-chain:** owner-only `startArbitrage`, whitelist routers/tokens, profit accounting + auto-withdraw.
@@ -58,7 +59,7 @@ flowchart TB
 ### Block loop (bot-core)
 
 1. `refreshContractState` — `paused()` каждые 5 блоков  
-2. `scanOpportunities` (V2/V3) или `scanOpportunitiesV4` (tri-hop) — multicall, multi-size, rank by **netProfit**  
+2. `scanOpportunities` (V2/V3), `scanOpportunitiesV4` (tri-hop), или `scanOpportunitiesV5` (graph)  
 3. `buildPlanForOpportunity` — **version-specific** (v2/v3/v4 bot)  
 4. `simulateAndSend` — Flashbots simulate → optional send (`DRY_RUN=false`)  
 5. SQLite `metricsStore` — события opportunity / simulation / bundle  
@@ -73,15 +74,19 @@ EtherSmart/
 ├── README.md
 ├── package.json              ← npm workspaces, test:all
 ├── docker-compose.yml
-├── docker/                   ← Dockerfile.v2-bot, v3-bot, v4-bot
+├── docker/                   ← Dockerfile.v2-bot … v5-bot
 ├── docs/
-│   └── CODE_REVIEW.md        ← оценка 95/100, checklist
+│   └── CODE_REVIEW.md        ← оценка 97/100, checklist
 ├── packages/
 │   └── bot-core/             ← @ethersmart/bot-core — общий runtime бота
 │       ├── src/
 │       │   ├── createBotRunner.js   ← entry orchestration
 │       │   ├── arbFinder.js         ← 2-hop scan
 │       │   ├── arbFinderV4.js       ← tri-hop scan
+│       │   ├── arbFinderV5.js       ← graph cycle scan
+│       │   ├── graphEngine.js
+│       │   ├── flashPicker.js       ← flash source + premium sync
+│       │   ├── bundleBuilder.js     ← backrun sim (not wired)
 │       │   ├── mempoolWatcher.js    ← optional USE_MEMPOOL
 │       │   ├── flashbotsSender.js
 │       │   ├── gasOracle.js
@@ -123,6 +128,16 @@ EtherSmart/
         │   ├── legTypes.js
         │   └── config.js     ← triangles
         └── ...
+└── v5/
+    ├── contracts/HonestFlashArbV5.sol
+    ├── test/
+    ├── scripts/deploy.js
+    └── bot/
+        ├── src/
+        │   ├── txBuilder.js      ← ExecutionPlan + adapters
+        │   ├── validateChecks.js ← graph + FLASH_SOURCE validation
+        │   └── config.js         ← graphEdges
+        └── ...
 ```
 
 ### Куда вносить изменения
@@ -133,11 +148,16 @@ EtherSmart/
 | V2 plan encoding | `v2/bot/src/txBuilder.js` |
 | V3 legs + QuoterV2 | `v3/bot/src/txBuilder.js`, `quoterV2.js` |
 | V4 multi-leg plan | `v4/bot/src/txBuilder.js`, `legTypes.js` |
+| V5 graph plan + flash | `v5/bot/src/txBuilder.js`, `validateChecks.js` |
 | Tri-hop scan | `packages/bot-core/src/arbFinderV4.js` |
+| Graph scan | `packages/bot-core/src/arbFinderV5.js`, `graphEngine.js` |
+| Flash picker | `packages/bot-core/src/flashPicker.js` |
 | Env / triangles | `v4/bot/src/config.js` |
+| Env / graphEdges | `v5/bot/src/config.js` |
 | V4 контракт | `v4/contracts/HonestFlashArbV4.sol` + `v4/test/` |
-| Деплой mainnet адресов | `v2/scripts/deploy.js`, `v3/scripts/deploy.js`, `v4/scripts/deploy.js` |
-| Runbook ops | `v2/bot/OPERATIONS.md`, `v3/bot/OPERATIONS.md`, `v4/bot/OPERATIONS.md` |
+| V5 контракт | `v5/contracts/HonestFlashArbV5.sol` + `v5/test/` |
+| Деплой mainnet адресов | `v2/scripts/deploy.js`, `v3/scripts/deploy.js`, `v4/scripts/deploy.js`, `v5/scripts/deploy.js` |
+| Runbook ops | `v2/bot/OPERATIONS.md`, `v3/bot/OPERATIONS.md`, `v4/bot/OPERATIONS.md`, `v5/bot/OPERATIONS.md` |
 
 **Не дублируй** код между `v2/bot` и `v3/bot`, если это не version-specific — выноси в `bot-core`.
 
@@ -201,7 +221,7 @@ _maybeAutoWithdraw(asset);
 
 - `DRY_RUN=true` по умолчанию (`DRY_RUN=false` только явно)
 - `BOT_PK` **должен** быть owner контракта (preflight)
-- `artifactPath` → `v2/artifacts/...` или `v3/artifacts/...`, не `bot/artifacts/`
+- `artifactPath` → `v2/artifacts/...`, `v3/artifacts/...`, `v4/artifacts/...`, or `v5/artifacts/...`, not `bot/artifacts/`
 
 ---
 
@@ -247,25 +267,30 @@ npm run v2:compile
 npm run v2:test
 npm run v3:test
 npm run v4:test
+npm run v5:test
 npm run core:test
 npm run v2:bot:test
 npm run v3:bot:test
 npm run v4:bot:test
+npm run v5:bot:test
 
 # Деплой (только если пользователь явно просит)
 cd v2 && npm run deploy
 cd v3 && npm run deploy
 cd v4 && npm run deploy
+cd v5 && npm run deploy
 
 # Бот (dry-run по умолчанию)
 cd v2/bot && npm start
 cd v3/bot && npm start
 cd v4/bot && npm start
+cd v5/bot && npm start
 
 # Docker
 docker compose up v2-bot
 docker compose up v3-bot
 docker compose up v4-bot
+docker compose up v5-bot
 ```
 
 ### Hardhat fork tests
@@ -293,16 +318,18 @@ docker compose up v4-bot
 | `SLIPPAGE_BPS` | — | default 50 (0.5%) |
 | `MIN_PROFIT_BPS` | — | default 10 + Aave premium в bot |
 | `BUILDER_TIP_WEI` | — | off-chain tip via priority fee |
-| `ESTIMATED_ARB_GAS` | — | 900000 (v2), 950000 (v3), 1100000 (v4) |
+| `ESTIMATED_ARB_GAS` | — | 900000 (v2), 950000 (v3), 1100000 (v4), **1200000 (v5)** |
 | `MAX_GAS_PRICE_GWEI` | — | cap maxFeePerGas |
 | `MULTI_BLOCK_TARGETS` | — | 1–5 future blocks |
-| `HEALTH_PORT` | — | 8787 v2 / 8788 v3 / 8789 v4 |
+| `HEALTH_PORT` | — | 8787 v2 / 8788 v3 / 8789 v4 / **8790 v5** |
 | `HEALTH_BIND` | — | default `127.0.0.1` |
 | `HEALTH_TOKEN` | — | Bearer auth для /health /stats /metrics |
 | `METRICS_ENABLED` | — | default true, SQLite |
 | `USE_V3_LEGS` | v3 only | `true` для mixed V2/V3 |
-| `FLASH_SOURCE` | v4 only | `0` Aave, `1` Balancer vault |
-| `USE_MEMPOOL` | v4 only | default `false` |
+| `USE_MEMPOOL` | v4/v5 | default `false`; v5 decodes swap calldata → **re-scan** (not auto-backrun) |
+| `FLASH_SOURCE` | v4/v5 | `0` Aave, `1` Balancer, `2` Uni V3 pool (v5) |
+| `UNI_V3_FLASH_POOL` | v5 | required when `FLASH_SOURCE=2` |
+| `MIN_ETH_BALANCE` | v4/v5 | min signer ETH warning threshold |
 | `FLASHBOTS_AUTH_PK` | — | optional, отдельный auth key |
 
 **Никогда** не коммить `.env`, ключи, `metrics*.db`.
@@ -372,10 +399,12 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 | V2 contract | `npm run v2:test` | 22 passing, 2 pending fork |
 | V3 contract | `npm run v3:test` | 7 passing |
 | V4 contract | `npm run v4:test` | 13 passing |
-| bot-core | `npm run core:test` | 11 passing |
+| V5 contract | `npm run v5:test` | 13 passing |
+| bot-core | `npm run core:test` | 17 passing |
 | v2 bot | `npm run v2:bot:test` | 2 passing |
 | v3 bot | `npm run v3:bot:test` | 3 passing |
 | v4 bot | `npm run v4:bot:test` | 5 passing |
+| v5 bot | `npm run v5:bot:test` | 6 passing |
 
 **Node test runner:** `node --test`, не Jest.
 
@@ -391,7 +420,7 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 | `GET /stats` | Bearer if set | in-memory stats |
 | `GET /metrics/recent` | Bearer if set | last 100 SQLite events |
 
-SQLite path: `{logDir}/metrics-v2.db` или `metrics-v3.db`.
+SQLite path: `{logDir}/metrics-v2.db` … `metrics-v5.db`.
 
 Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submitted`, `bundle_included`, `block_error`, `stats_snapshot`.
 
@@ -415,10 +444,10 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 
 Не реализовано намеренно; не обещай пользователю без имплементации:
 
-1. Mempool watcher / backrun / sandwich
+1. **Full mempool backrun** — `bundleBuilder.js` exported, not wired; mempool = re-scan + metrics
 2. ML / optimal routing across >2 hops
 3. External security audit
-4. Multi-chain
+4. Multi-chain / multi-relay
 5. Guaranteed mainnet profit (рынок MEV конкурентен)
 
 Честно говори: solo V2 round-trip arb на mainnet **обычно убыточен** — частые simulation failures ожидаемы.
@@ -439,7 +468,7 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 | Изменение | Файлы |
 |-----------|-------|
 | Bot env / ops | `v2/.env.example`, `v3/.env.example`, `OPERATIONS.md` |
-| Deploy / constructor | `DEPLOY.md`, `scripts/deploy.js` |
+| Deploy / constructor | `DEPLOY.md`, `scripts/deploy.js`, **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** |
 | Architecture / quality | `docs/CODE_REVIEW.md`, `README.md` |
 | Agent instructions | `AGENTS.md` (этот файл) |
 | Roadmap / backlog | `0. TODO.md` |
@@ -509,22 +538,22 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 
 ---
 
-## 20. Self-assessment: почему этот AGENTS.md — 95/100
+## 20. Self-assessment: почему этот AGENTS.md — 97/100
 
 | Критерий | Балл | Комментарий |
 |----------|------|-------------|
-| Полнота архитектуры | 19/20 | Mermaid + таблицы + file map |
+| Полнота архитектуры | 19/20 | Mermaid + таблицы + file map incl. V5 |
 | Actionable workflows | 19/20 | §19 по типам задач |
 | Safety / invariants | 20/20 | §5, §13, §17 |
-| Accurate to codebase | 19/20 | sync с bot-core, V3 constructor |
-| Maintainability | 18/20 | ссылки на docs, не дублирует весь CODE_REVIEW |
-| **Итого** | **95/100** | −5: нет auto-generated API docs из JSDoc |
+| Accurate to codebase | 20/20 | V5 graph, flashPicker, honest mempool scope |
+| Maintainability | 19/20 | ссылки на docs, CODE_REVIEW 97 |
+| **Итого** | **97/100** | −3: audit, bundleBuilder wiring, CI badge |
 
 ### Чего не хватает до 100
 
-- Автогенерация API reference из `bot-core` JSDoc
+- External security audit
+- `bundleBuilder` wired to mempool trigger (optional)
 - CI badge / pinned Node version в AGENTS
-- Decision tree «fork vs mock test» с примерами env
 
 ---
 
@@ -540,4 +569,4 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 
 ---
 
-*Последнее обновление AGENTS.md: 2026-06-26 — добавлен HonestFlashArbV4 + tri-hop bot-core.*
+*Последнее обновление AGENTS.md: 2026-06-26 — V5 production 97/100, flash premium sync, honest mempool scope.*

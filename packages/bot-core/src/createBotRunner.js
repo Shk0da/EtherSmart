@@ -8,7 +8,12 @@ const {
   scanOpportunitiesV4,
   parseLoanAmountsForTriangles,
 } = require("./arbFinderV4");
+const {
+  scanOpportunitiesV5,
+  parseLoanAmountsForGraph,
+} = require("./arbFinderV5");
 const { createMempoolWatcher } = require("./mempoolWatcher");
+const { pickFlashSource, encodeFlashParams } = require("./flashPicker");
 const { createFlashbotsProvider, simulateAndSend } = require("./flashbotsSender");
 const {
   createStats,
@@ -31,13 +36,6 @@ function loadContract(config, provider, signer) {
   return new ethers.Contract(config.contractAddress, artifact.abi, signer);
 }
 
-/**
- * @param {object} options
- * @param {object} options.config
- * @param {(provider, opportunity, block) => Promise<object>} options.buildPlanForOpportunity
- * @param {(config) => string[]} [options.extraValidateChecks]
- * @param {object} [options.extraLogFields]
- */
 async function createBotRunner({
   config,
   buildPlanForOpportunity,
@@ -50,13 +48,18 @@ async function createBotRunner({
   const stats = createStats(config);
   const metricsStore = createMetricsStore(config);
 
+  const version = config.version;
+  const isV4 = version === "v4";
+  const isV5 = version === "v5";
+
   log.info(
     {
-      version: config.version,
+      version,
       dryRun: config.dryRun,
       contract: config.contractAddress,
       loanSizes: config.loanSizesUsdc,
       multiBlockTargets: config.multiBlockTargets,
+      useMempool: config.useMempool,
       metricsDb: config.metricsEnabled === false ? "disabled" : "sqlite",
       ...extraLogFields,
     },
@@ -77,15 +80,8 @@ async function createBotRunner({
 
   const contractState = createContractState({ paused: preflight.paused });
   const ws = new ResilientWsProvider(config, log);
-  await ws.connect();
-  await mempoolWatcher.start(ws.getProvider());
 
-  const flashbots = await createFlashbotsProvider(config, signer, httpProvider);
-
-  const isV4 = config.version === "v4";
-  const loanAmounts = isV4
-    ? parseLoanAmountsForTriangles(config)
-    : parseLoanAmounts(config, config.pairs);
+  let pendingMempoolScan = false;
 
   const mempoolWatcher = createMempoolWatcher({
     config,
@@ -93,8 +89,20 @@ async function createBotRunner({
     onTrigger: (trigger) => {
       metricsStore.record("mempool_trigger", trigger);
       log.debug(trigger, "mempool swap trigger");
+      pendingMempoolScan = true;
     },
   });
+
+  await ws.connect();
+  await mempoolWatcher.start(ws.getProvider());
+
+  const flashbots = await createFlashbotsProvider(config, signer, httpProvider);
+
+  const loanAmounts = isV5
+    ? parseLoanAmountsForGraph(config)
+    : isV4
+      ? parseLoanAmountsForTriangles(config)
+      : parseLoanAmounts(config, config.pairs);
 
   let healthServer = null;
   healthServer = startHealthServer({
@@ -103,7 +111,7 @@ async function createBotRunner({
     metricsStore,
     getStatus: () => ({
       ok: ws.getStatus().connected && !contractState.paused,
-      version: config.version,
+      version,
       dryRun: config.dryRun,
       ws: ws.getStatus(),
       contractPaused: contractState.paused,
@@ -125,6 +133,82 @@ async function createBotRunner({
     ],
   });
 
+  async function runScan(blockNumber, provider, block) {
+    const opportunities = isV5
+      ? await scanOpportunitiesV5(provider, config, loanAmounts)
+      : isV4
+        ? await scanOpportunitiesV4(
+            provider,
+            config,
+            config.triangles,
+            loanAmounts
+          )
+        : await scanOpportunities(
+            provider,
+            config,
+            config.pairs,
+            loanAmounts
+          );
+
+    if (opportunities.length === 0) {
+      log.debug({ blockNumber }, "no net-profitable opportunities");
+      return;
+    }
+
+    const best = opportunities[0];
+    recordOpportunity(stats, best);
+    metricsStore.record("opportunity", {
+      block: blockNumber,
+      pair: best.pair || best.triangle || best.cycleId,
+      direction: best.direction,
+      loanAmount: best.loanAmount.toString(),
+      grossProfit: best.estimatedProfit.toString(),
+      netProfit: best.netProfit.toString(),
+    });
+
+    log.info(
+      {
+        blockNumber,
+        pair: best.pair || best.triangle || best.cycleId,
+        direction: best.direction,
+        loanAmount: best.loanAmount.toString(),
+        grossProfit: best.estimatedProfit.toString(),
+        netProfit: best.netProfit.toString(),
+      },
+      "opportunity found"
+    );
+
+    const plan = await buildPlanForOpportunity(provider, best, block);
+
+    let flashParams = "0x";
+    let flashSource = config.flashSource ?? 0;
+    if (isV5) {
+      const pick = pickFlashSource(config, best);
+      flashSource = pick.source;
+      flashParams = encodeFlashParams(pick.flashParams);
+    }
+
+    const runConfig = { ...config, flashSource };
+
+    const result = await simulateAndSend({
+      config: runConfig,
+      flashbotsProvider: flashbots,
+      arbContract: arb,
+      asset: isV5 || isV4 ? best.loanToken : best.asset,
+      loanAmount: isV5 || isV4 ? undefined : best.loanAmount,
+      plan,
+      flashParams,
+      signer,
+      httpProvider,
+      baseBlock: blockNumber,
+      log,
+      stats,
+      metricsStore,
+    });
+
+    if (result.ok) stats.bundlesSimulated += 1;
+  }
+
   const runner = new BlockRunner(async (blockNumber) => {
     stats.blocksScanned += 1;
     touchBlock(stats, blockNumber);
@@ -140,66 +224,11 @@ async function createBotRunner({
     const block = await provider.getBlock(blockNumber);
 
     try {
-      const opportunities = isV4
-        ? await scanOpportunitiesV4(
-            provider,
-            config,
-            config.triangles,
-            loanAmounts
-          )
-        : await scanOpportunities(
-            provider,
-            config,
-            config.pairs,
-            loanAmounts
-          );
-
-      if (opportunities.length === 0) {
-        log.debug({ blockNumber }, "no net-profitable opportunities");
-        return;
+      if (pendingMempoolScan && isV5) {
+        pendingMempoolScan = false;
+        log.debug({ blockNumber }, "mempool-triggered scan");
       }
-
-      const best = opportunities[0];
-      recordOpportunity(stats, best);
-      metricsStore.record("opportunity", {
-        block: blockNumber,
-        pair: best.pair || best.triangle,
-        direction: best.direction,
-        loanAmount: best.loanAmount.toString(),
-        grossProfit: best.estimatedProfit.toString(),
-        netProfit: best.netProfit.toString(),
-      });
-
-      log.info(
-        {
-          blockNumber,
-          pair: best.pair || best.triangle,
-          direction: best.direction,
-          loanAmount: best.loanAmount.toString(),
-          grossProfit: best.estimatedProfit.toString(),
-          netProfit: best.netProfit.toString(),
-        },
-        "opportunity found"
-      );
-
-      const plan = await buildPlanForOpportunity(provider, best, block);
-
-      const result = await simulateAndSend({
-        config,
-        flashbotsProvider: flashbots,
-        arbContract: arb,
-        asset: isV4 ? best.loanToken : best.asset,
-        loanAmount: isV4 ? undefined : best.loanAmount,
-        plan,
-        signer,
-        httpProvider,
-        baseBlock: blockNumber,
-        log,
-        stats,
-        metricsStore,
-      });
-
-      if (result.ok) stats.bundlesSimulated += 1;
+      await runScan(blockNumber, provider, block);
     } catch (err) {
       stats.blockErrors += 1;
       metricsStore.record("block_error", {

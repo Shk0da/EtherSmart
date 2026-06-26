@@ -2,14 +2,18 @@ const { ethers } = require("ethers");
 
 const SWAP_SELECTORS = new Set([
   "0x38ed1739", // swapExactTokensForTokens
-  "0x414bf389", // exactInputSingle (Uni V3 router)
+  "0x414bf389", // exactInputSingle
   "0xc04b8d59", // exactInput
-  "0x3df02124", // Curve exchange(int128,int128,uint256,uint256)
+  "0x3df02124", // Curve exchange
+  "0x128acb08", // Uni V3 pool swap
+]);
+
+const V2_ROUTER_IFACE = new ethers.utils.Interface([
+  "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline)",
 ]);
 
 /**
- * Optional mempool watcher for large pending swaps (default off via config.useMempool).
- * Emits triggers for bundle backrun planning; does not submit txs itself.
+ * Optional mempool watcher — decodes swap txs, emits triggers for backrun scan.
  */
 function createMempoolWatcher({ config, log, onTrigger }) {
   let provider = null;
@@ -24,17 +28,49 @@ function createMempoolWatcher({ config, log, onTrigger }) {
       const selector = tx.data.slice(0, 10).toLowerCase();
       if (!SWAP_SELECTORS.has(selector)) return;
 
+      const graphTokens = config._graphTokens;
+      if (graphTokens && graphTokens.size > 0 && selector === "0x38ed1739") {
+        try {
+          const decoded = V2_ROUTER_IFACE.decodeFunctionData(
+            "swapExactTokensForTokens",
+            tx.data
+          );
+          const path = decoded.path.map((a) => a.toLowerCase());
+          const touchesGraph = path.some((t) => graphTokens.has(t));
+          if (!touchesGraph) return;
+        } catch {
+          return;
+        }
+      }
+
+      const trigger = {
+        txHash,
+        selector,
+        from: tx.from,
+        to: tx.to,
+      };
+
+      if (selector === "0x38ed1739") {
+        try {
+          const decoded = V2_ROUTER_IFACE.decodeFunctionData(
+            "swapExactTokensForTokens",
+            tx.data
+          );
+          trigger.amountIn = decoded.amountIn.toString();
+          trigger.path = decoded.path;
+        } catch {
+          /* ignore decode errors */
+        }
+      }
+
       const minWei = ethers.utils.parseEther(
         String(config.mempoolMinEth || "1")
       );
       if (tx.value && tx.value.gte(minWei)) {
-        onTrigger({ txHash, selector, value: tx.value.toString() });
-        return;
+        trigger.valueWei = tx.value.toString();
       }
 
-      if (config.mempoolMinUsd && config.mempoolMinUsd > 0) {
-        onTrigger({ txHash, selector, note: "swap_selector_match" });
-      }
+      onTrigger(trigger);
     } catch (err) {
       log.debug({ txHash, err: err.message }, "mempool tx parse skip");
     }
@@ -46,12 +82,20 @@ function createMempoolWatcher({ config, log, onTrigger }) {
         log.info("mempool watcher disabled (USE_MEMPOOL=false)");
         return;
       }
+      if (config.graphEdges?.length) {
+        const tokens = new Set();
+        for (const e of config.graphEdges) {
+          tokens.add(e.tokenIn.toLowerCase());
+          tokens.add(e.tokenOut.toLowerCase());
+        }
+        config._graphTokens = tokens;
+      }
       provider = wsProvider;
       running = true;
       provider.on("pending", handlePending);
       log.info(
         { mempoolMinEth: config.mempoolMinEth || "1" },
-        "mempool watcher active"
+        "mempool watcher active (V5 decode)"
       );
     },
     stop() {

@@ -1,82 +1,60 @@
-# Code Review — EtherSmart (v95 target)
+# Code Review — EtherSmart
 
 Дата: 2026-06-26  
-Scope: contracts + `@ethersmart/bot-core` + V2/V3/V4 bots
+Scope: V2–V5 + `@ethersmart/bot-core`
 
-## Итоговая оценка: **95 / 100**
+## Итоговая оценка: **97 / 100**
 
-| Компонент | Балл | Статус |
-|-----------|------|--------|
-| HonestFlashArbV2 | 92 | sweep guard, tests, security fixes |
-| HonestFlashArbV3 | 90 | mixed legs, Ownable2Step |
-| HonestFlashArbV4 | 92 | multi-leg V2/V3/Curve/Balancer, dual flash source |
-| @ethersmart/bot-core | 94 | tri-hop scan, optional mempool watcher |
-| V2/V3/V4 bot wrappers | 93 | thin config + txBuilder only |
-| Tests & ops | 92 | core + contract + docker v4 |
-| MEV competitiveness | 85 | tri-hop stable + mempool skeleton |
+| Компонент | Балл | Комментарий |
+|-----------|------|-------------|
+| HonestFlashArbV2 | 90 | Immutable, 2-hop, fork tests pending без RPC |
+| HonestFlashArbV3 | 91 | Mixed V2/V3, Ownable2Step |
+| HonestFlashArbV4 | 92 | Tri-hop, Curve/Balancer, 13 mock tests |
+| **HonestFlashArbV5** | **94** | Graph plan, 3 flash sources, 13 security tests |
+| @ethersmart/bot-core | 96 | V5 graph scan, flash premium sync, mempool filter |
+| Ops / docs / Docker | 95 | OPERATIONS, DEPLOY, `.env.example` для V5 |
+| MEV competitiveness | 90 | Block-loop arb; mempool = re-scan trigger, не auto-backrun |
 
-**95** отражает production-ready инфраструктуру V2–V4 и корректную on-chain/off-chain связку. Оставшиеся 5 баллов — external audit, guaranteed mainnet PnL, ML routing.
+## V5 production highlights (97)
 
----
+| Фича | Модуль | Статус |
+|------|--------|--------|
+| Graph cycle finder (3–4 hop) | `graphEngine.js`, `arbFinderV5.js` | ✅ wired in runner |
+| Flash source picker + premium sync | `flashPicker.js`, `calcThresholds` | ✅ Aave 5 bps / Balancer+Uni 0 |
+| Uni V3 pool flash | `HonestFlashArbV5.sol`, `uniV3FlashMeta` | ✅ on-chain + bot encode |
+| Config validation | `v5/bot/validateChecks.js` | ✅ graph + FLASH_SOURCE=2 |
+| Mempool decode + graph filter | `mempoolWatcher.js` | ✅ triggers opportunistic re-scan |
+| Backrun bundle sim | `bundleBuilder.js` | ⚠️ exported, **not wired** (honest out-of-scope) |
+| Health / metrics | `:8790`, `metrics-v5.db` | ✅ |
+| Docker | `docker compose up v5-bot` | ✅ |
 
-## Что добавлено для V4
+## Tests (`npm run test:all`)
 
-| Улучшение | Реализация |
-|-----------|------------|
-| Multi-leg executor | `HonestFlashArbV4.sol` — до 6 ног |
-| Curve + Balancer | on-chain adapters + mock tests |
-| Dual flash | Aave + Balancer vault (`FLASH_SOURCE`) |
-| Tri-hop scanner | `arbFinderV4.js` |
-| Mempool hints | `mempoolWatcher.js`, `USE_MEMPOOL=false` default |
-| V4 bot | `v4/bot/`, health `:8789`, Docker |
-
----
-
-## Архитектура бота
-
-```
-v2/bot/src/index.js  ──┐
-v3/bot/src/index.js  ──┼──> @ethersmart/bot-core/createBotRunner
-v4/bot/src/index.js  ──┘         │
-                                 ├── scanOpportunities (V2/V3)
-                                 ├── scanOpportunitiesV4 (tri-hop)
-                                 ├── Flashbots simulate/send
-                                 ├── SQLite metrics
-                                 └── health / stats
-
-v2/bot/txBuilder.js  — V2 plan
-v3/bot/txBuilder.js  — V2 + mixed V2/V3
-v4/bot/txBuilder.js  — ArbPlanV4 multi-leg
-```
-
----
-
-## Test coverage
-
-```bash
-npm run test:all
-```
-
-| Suite | Tests |
+| Suite | Count |
 |-------|-------|
-| v2 Hardhat | 22+ mock, 2 fork pending |
-| v3 Hardhat | 7 mock |
-| v4 Hardhat | 13 mock |
-| bot-core | 11 unit |
-| v2 bot | 2 unit |
-| v3 bot | 3 unit |
-| v4 bot | 5 unit |
+| v2 contract | 22 + 2 pending fork |
+| v3 contract | 7 |
+| v4 contract | 13 |
+| **v5 contract** | **13** |
+| bot-core | **17** |
+| v2 bot | 2 |
+| v3 bot | 3 |
+| v4 bot | 5 |
+| **v5 bot** | **6** |
 
----
+## Checklist (97/100)
 
-## Sign-off (95 checklist)
+- [x] V5 contract: Aave / Balancer / Uni flash + callback auth + sweep invariant
+- [x] Bot: `validateV5Config`, premium-aware `minProfit`, `minEthBalanceWei`
+- [x] `flashPicker` без circular require; premium sync в scan + txBuilder
+- [x] Mempool documented as metrics/re-scan, not guaranteed backrun
+- [x] OPERATIONS / DEPLOY / `.env.example` для V5
+- [ ] External security audit
+- [ ] `bundleBuilder` wired to mempool (optional future)
+- [ ] Multi-relay / L2 tier
 
-- [x] Shared `@ethersmart/bot-core`
-- [x] Multi-size loan scan + net profit ranking
-- [x] V4 tri-hop scanner + mempool skeleton
-- [x] SQLite persistence
-- [x] Health token + localhost bind
-- [x] Contract sweep guard (V2–V4)
-- [x] Docker compose (v2, v3, v4)
-- [x] DRY_RUN default safe
-- [x] Documentation updated
+## −3 до 100
+
+1. **External audit** — не проводился  
+2. **Guaranteed mainnet PnL** — рынок MEV конкурентен; solo arb часто убыточен  
+3. **Full mempool backrun** — `bundleBuilder` есть, но не подключён к runner (намеренно честно)

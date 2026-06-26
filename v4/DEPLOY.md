@@ -1,5 +1,7 @@
 # Deploy HonestFlashArbV4
 
+> **Full guide (all versions, funding, algorithm):** [docs/DEPLOYMENT_GUIDE.md](../docs/DEPLOYMENT_GUIDE.md)
+
 ## Prerequisites
 
 - `v4/.env` with `DEPLOYER_PK`, `MAINNET_RPC_URL`, optional `ETHERSCAN_API_KEY`

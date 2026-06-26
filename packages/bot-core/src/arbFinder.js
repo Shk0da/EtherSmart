@@ -26,12 +26,13 @@ function parseLoanAmounts(config, pairs) {
   return out;
 }
 
-function calcThresholds(loanIn, config) {
-  const premium = (loanIn * 5n) / 10000n;
+function calcThresholds(loanIn, config, premiumBps = 5n) {
+  const bps = BigInt(premiumBps);
+  const premium = (loanIn * bps) / 10000n;
   const debt = loanIn + premium;
   const minProfit =
     (loanIn * BigInt(config.minProfitBps)) / 10000n + premium;
-  return { premium, debt, minProfit };
+  return { premium, debt, minProfit, premiumBps: bps };
 }
 
 function dexRouter(config, dex) {
