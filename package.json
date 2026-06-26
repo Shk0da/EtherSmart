@@ -1,0 +1,25 @@
+{
+  "name": "ethersmart",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Flash-loan arbitrage — HonestFlashArb V2 and V3",
+  "workspaces": [
+    "packages/bot-core",
+    "v2",
+    "v3",
+    "v2/bot",
+    "v3/bot"
+  ],
+  "scripts": {
+    "v2:compile": "npm run compile -w ethersmart-v2",
+    "v2:test": "npm run test -w ethersmart-v2",
+    "v2:deploy": "npm run deploy -w ethersmart-v2",
+    "v2:bot:test": "npm run test -w ethersmart-v2-bot",
+    "v3:compile": "npm run compile -w ethersmart-v3",
+    "v3:test": "npm run test -w ethersmart-v3",
+    "v3:deploy": "npm run deploy -w ethersmart-v3",
+    "v3:bot:test": "npm run test -w ethersmart-v3-bot",
+    "core:test": "npm run test -w @ethersmart/bot-core",
+    "test:all": "npm run v2:test && npm run v3:test && npm run core:test && npm run v2:bot:test && npm run v3:bot:test"
+  }
+}

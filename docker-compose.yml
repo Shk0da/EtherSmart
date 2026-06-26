@@ -1,0 +1,24 @@
+services:
+  v2-bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.v2-bot
+    env_file:
+      - v2/.env
+    ports:
+      - "8787:8787"
+    restart: unless-stopped
+    volumes:
+      - ./v2/logs:/app/v2/logs
+
+  v3-bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.v3-bot
+    env_file:
+      - v3/.env
+    ports:
+      - "8788:8788"
+    restart: unless-stopped
+    volumes:
+      - ./v3/logs:/app/v3/logs

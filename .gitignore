@@ -1,0 +1,10 @@
+node_modules/
+package-lock.json
+.env
+**/cache/
+**/artifacts/
+**/logs/
+
+# Legacy root artifacts (if any remain)
+cache/
+artifacts/

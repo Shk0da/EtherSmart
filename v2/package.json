@@ -1,0 +1,22 @@
+{
+  "name": "ethersmart-v2",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HonestFlashArbV2 — V2-only flash loan arbitrage",
+  "scripts": {
+    "compile": "hardhat compile",
+    "test": "hardhat test",
+    "test:mock": "hardhat test test/honestFlashArb.mock.test.js",
+    "test:fork": "hardhat test test/honestFlashArb.fork.test.js",
+    "deploy": "hardhat run scripts/deploy.js --network mainnet",
+    "deploy:sepolia": "hardhat run scripts/deploy.js --network sepolia"
+  },
+  "devDependencies": {
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "dotenv": "^16.4.5",
+    "hardhat": "^2.22.0"
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^5.0.2"
+  }
+}
