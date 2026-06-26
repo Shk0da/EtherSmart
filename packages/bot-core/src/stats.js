@@ -24,7 +24,7 @@ function recordOpportunity(stats, opp) {
   stats.totalEstimatedProfit += opp.estimatedProfit;
   stats.totalNetProfit += opp.netProfit || opp.estimatedProfit;
   stats.lastOpportunity = {
-    pair: opp.pair,
+    pair: opp.pair || opp.triangle,
     direction: opp.direction,
     loanAmount: opp.loanAmount.toString(),
     profit: opp.estimatedProfit.toString(),

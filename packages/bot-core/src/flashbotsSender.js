@@ -23,11 +23,19 @@ async function signArbitrageTx({
   signer,
   httpProvider,
 }) {
-  const populated = await arbContract.populateTransaction.startArbitrage(
-    asset,
-    loanAmount,
-    plan
-  );
+  let populated;
+  if (config.version === "v4") {
+    populated = await arbContract.populateTransaction.startArbitrage(
+      config.flashSource ?? 0,
+      plan
+    );
+  } else {
+    populated = await arbContract.populateTransaction.startArbitrage(
+      asset,
+      loanAmount,
+      plan
+    );
+  }
 
   const gasLimit = await estimateGasLimit(httpProvider, {
     ...populated,

@@ -14,6 +14,7 @@ EtherSmart — flash-loan арбитраж на Ethereum mainnet через Aave
 |------|----------|-----|-------|-----|
 | **V2** | `HonestFlashArbV2` | Uni V2 ↔ Sushi | Immutable | `v2/bot/` |
 | **V3** | `HonestFlashArbV3` | V2 + Uni V3 mixed legs | Ownable2Step | `v3/bot/` |
+| **V4** | `HonestFlashArbV4` | V2/V3 + Curve + Balancer, 3–6 legs | Ownable2Step | `v4/bot/` |
 
 **Off-chain:** Flashbots bundles, multicall-сканер, SQLite-метрики, health HTTP.  
 **On-chain:** owner-only `startArbitrage`, whitelist routers/tokens, profit accounting + auto-withdraw.
@@ -57,8 +58,8 @@ flowchart TB
 ### Block loop (bot-core)
 
 1. `refreshContractState` — `paused()` каждые 5 блоков  
-2. `scanOpportunities` — 2-round multicall, multi-size loans, rank by **netProfit**  
-3. `buildPlanForOpportunity` — **version-specific** (v2/bot или v3/bot)  
+2. `scanOpportunities` (V2/V3) или `scanOpportunitiesV4` (tri-hop) — multicall, multi-size, rank by **netProfit**  
+3. `buildPlanForOpportunity` — **version-specific** (v2/v3/v4 bot)  
 4. `simulateAndSend` — Flashbots simulate → optional send (`DRY_RUN=false`)  
 5. SQLite `metricsStore` — события opportunity / simulation / bundle  
 
@@ -72,14 +73,16 @@ EtherSmart/
 ├── README.md
 ├── package.json              ← npm workspaces, test:all
 ├── docker-compose.yml
-├── docker/                   ← Dockerfile.v2-bot, Dockerfile.v3-bot
+├── docker/                   ← Dockerfile.v2-bot, v3-bot, v4-bot
 ├── docs/
 │   └── CODE_REVIEW.md        ← оценка 95/100, checklist
 ├── packages/
 │   └── bot-core/             ← @ethersmart/bot-core — общий runtime бота
 │       ├── src/
 │       │   ├── createBotRunner.js   ← entry orchestration
-│       │   ├── arbFinder.js         ← scan + net profit
+│       │   ├── arbFinder.js         ← 2-hop scan
+│       │   ├── arbFinderV4.js       ← tri-hop scan
+│       │   ├── mempoolWatcher.js    ← optional USE_MEMPOOL
 │       │   ├── flashbotsSender.js
 │       │   ├── gasOracle.js
 │       │   ├── metricsStore.js      ← SQLite
@@ -110,6 +113,16 @@ EtherSmart/
         │   ├── quoterV2.js
         │   └── v3Path.js
         └── ...
+└── v4/
+    ├── contracts/HonestFlashArbV4.sol
+    ├── test/
+    ├── scripts/deploy.js
+    └── bot/
+        ├── src/
+        │   ├── txBuilder.js  ← ArbPlanV4 multi-leg
+        │   ├── legTypes.js
+        │   └── config.js     ← triangles
+        └── ...
 ```
 
 ### Куда вносить изменения
@@ -119,11 +132,12 @@ EtherSmart/
 | Общая логика бота (scan, gas, Flashbots, health, metrics) | `packages/bot-core/` |
 | V2 plan encoding | `v2/bot/src/txBuilder.js` |
 | V3 legs + QuoterV2 | `v3/bot/src/txBuilder.js`, `quoterV2.js` |
-| Env / addresses / pairs | `v2/bot/src/config.js` или `v3/bot/src/config.js` |
-| V2 контракт | `v2/contracts/HonestFlashArbV2.sol` + `v2/test/` |
-| V3 контракт | `v3/contracts/HonestFlashArbV3.sol` + `v3/test/` |
-| Деплой mainnet адресов | `v2/scripts/deploy.js` или `v3/scripts/deploy.js` |
-| Runbook ops | `v2/bot/OPERATIONS.md`, `v3/bot/OPERATIONS.md` |
+| V4 multi-leg plan | `v4/bot/src/txBuilder.js`, `legTypes.js` |
+| Tri-hop scan | `packages/bot-core/src/arbFinderV4.js` |
+| Env / triangles | `v4/bot/src/config.js` |
+| V4 контракт | `v4/contracts/HonestFlashArbV4.sol` + `v4/test/` |
+| Деплой mainnet адресов | `v2/scripts/deploy.js`, `v3/scripts/deploy.js`, `v4/scripts/deploy.js` |
+| Runbook ops | `v2/bot/OPERATIONS.md`, `v3/bot/OPERATIONS.md`, `v4/bot/OPERATIONS.md` |
 
 **Не дублируй** код между `v2/bot` и `v3/bot`, если это не version-specific — выноси в `bot-core`.
 
@@ -232,21 +246,26 @@ npm run test:all
 npm run v2:compile
 npm run v2:test
 npm run v3:test
+npm run v4:test
 npm run core:test
 npm run v2:bot:test
 npm run v3:bot:test
+npm run v4:bot:test
 
 # Деплой (только если пользователь явно просит)
 cd v2 && npm run deploy
 cd v3 && npm run deploy
+cd v4 && npm run deploy
 
 # Бот (dry-run по умолчанию)
 cd v2/bot && npm start
 cd v3/bot && npm start
+cd v4/bot && npm start
 
 # Docker
 docker compose up v2-bot
 docker compose up v3-bot
+docker compose up v4-bot
 ```
 
 ### Hardhat fork tests
@@ -255,13 +274,13 @@ docker compose up v3-bot
 
 ### Solidity compile
 
-`viaIR: true` в обоих `hardhat.config.js` — **не отключать** (stack too deep в V3).
+`viaIR: true` в `hardhat.config.js` (v2/v3/v4) — **не отключать** (stack too deep).
 
 ---
 
 ## 8. Конфигурация (.env)
 
-Бот читает **`v2/.env`** или **`v3/.env`** (родитель каталога `bot/`), см. `config.js`:
+Бот читает **`v2/.env`**, **`v3/.env`** или **`v4/.env`** (родитель каталога `bot/`), см. `config.js`:
 
 | Переменная | Обязательно | Описание |
 |------------|-------------|----------|
@@ -274,14 +293,16 @@ docker compose up v3-bot
 | `SLIPPAGE_BPS` | — | default 50 (0.5%) |
 | `MIN_PROFIT_BPS` | — | default 10 + Aave premium в bot |
 | `BUILDER_TIP_WEI` | — | off-chain tip via priority fee |
-| `ESTIMATED_ARB_GAS` | — | 900000 (v2), 950000 (v3) |
+| `ESTIMATED_ARB_GAS` | — | 900000 (v2), 950000 (v3), 1100000 (v4) |
 | `MAX_GAS_PRICE_GWEI` | — | cap maxFeePerGas |
 | `MULTI_BLOCK_TARGETS` | — | 1–5 future blocks |
-| `HEALTH_PORT` | — | 8787 v2 / 8788 v3 |
+| `HEALTH_PORT` | — | 8787 v2 / 8788 v3 / 8789 v4 |
 | `HEALTH_BIND` | — | default `127.0.0.1` |
 | `HEALTH_TOKEN` | — | Bearer auth для /health /stats /metrics |
 | `METRICS_ENABLED` | — | default true, SQLite |
 | `USE_V3_LEGS` | v3 only | `true` для mixed V2/V3 |
+| `FLASH_SOURCE` | v4 only | `0` Aave, `1` Balancer vault |
+| `USE_MEMPOOL` | v4 only | default `false` |
 | `FLASHBOTS_AUTH_PK` | — | optional, отдельный auth key |
 
 **Никогда** не коммить `.env`, ключи, `metrics*.db`.
@@ -295,7 +316,7 @@ docker compose up v3-bot
 1. Реализуй в `packages/bot-core/src/`
 2. Экспортируй из `packages/bot-core/src/index.js`
 3. Тест в `packages/bot-core/test/`
-4. При необходимости — поле в `v2/bot/src/config.js` и `v3/bot/src/config.js`
+4. При необходимости — поле в `v2/bot`, `v3/bot`, `v4/bot` config.js
 5. Обнови `.env.example`, `OPERATIONS.md`
 6. `npm run test:all`
 
@@ -350,9 +371,11 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 |-------|---------|----------|
 | V2 contract | `npm run v2:test` | 22 passing, 2 pending fork |
 | V3 contract | `npm run v3:test` | 7 passing |
-| bot-core | `npm run core:test` | 7 passing |
+| V4 contract | `npm run v4:test` | 13 passing |
+| bot-core | `npm run core:test` | 11 passing |
 | v2 bot | `npm run v2:bot:test` | 2 passing |
 | v3 bot | `npm run v3:bot:test` | 3 passing |
+| v4 bot | `npm run v4:bot:test` | 5 passing |
 
 **Node test runner:** `node --test`, не Jest.
 
@@ -517,4 +540,4 @@ Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submit
 
 ---
 
-*Последнее обновление AGENTS.md: 2026-06-25 — соответствует состоянию репозитория с `@ethersmart/bot-core` и оценкой 95/100.*
+*Последнее обновление AGENTS.md: 2026-06-26 — добавлен HonestFlashArbV4 + tri-hop bot-core.*

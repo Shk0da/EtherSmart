@@ -4,6 +4,8 @@ module.exports = {
   ...require("./gasOracle"),
   ...require("./multicallPriceMonitor"),
   ...require("./arbFinder"),
+  ...require("./arbFinderV4"),
+  ...require("./mempoolWatcher"),
   ...require("./metricsStore"),
   ...require("./stats"),
   ...require("./preflight"),

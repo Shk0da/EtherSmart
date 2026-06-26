@@ -1,0 +1,20 @@
+{
+  "name": "ethersmart-v4-bot",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Off-chain tri-hop arbitrage bot for HonestFlashArbV4",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dry-run": "cross-env DRY_RUN=true node src/index.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "@ethersmart/bot-core": "1.0.0",
+    "dotenv": "^16.4.5",
+    "ethers": "^5.7.2"
+  },
+  "devDependencies": {
+    "cross-env": "^7.0.3"
+  }
+}

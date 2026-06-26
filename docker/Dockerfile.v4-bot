@@ -1,0 +1,19 @@
+FROM node:20-bookworm-slim
+
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY package.json package-lock.json* ./
+COPY packages/bot-core/package.json packages/bot-core/
+COPY v4/package.json v4/
+COPY v4/bot/package.json v4/bot/
+
+RUN npm install --workspace=@ethersmart/bot-core --workspace=ethersmart-v4-bot
+
+COPY packages/bot-core packages/bot-core
+COPY v4/bot v4/bot
+COPY v4/artifacts v4/artifacts
+
+WORKDIR /app/v4/bot
+CMD ["node", "src/index.js"]

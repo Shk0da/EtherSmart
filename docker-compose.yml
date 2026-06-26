@@ -22,3 +22,15 @@ services:
     restart: unless-stopped
     volumes:
       - ./v3/logs:/app/v3/logs
+
+  v4-bot:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.v4-bot
+    env_file:
+      - v4/.env
+    ports:
+      - "8789:8789"
+    restart: unless-stopped
+    volumes:
+      - ./v4/logs:/app/v4/logs

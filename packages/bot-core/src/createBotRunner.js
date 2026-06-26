@@ -4,6 +4,11 @@ const { validateConfig } = require("./validateConfig");
 const { createLogger } = require("./logger");
 const { ResilientWsProvider } = require("./wsProvider");
 const { scanOpportunities, parseLoanAmounts } = require("./arbFinder");
+const {
+  scanOpportunitiesV4,
+  parseLoanAmountsForTriangles,
+} = require("./arbFinderV4");
+const { createMempoolWatcher } = require("./mempoolWatcher");
 const { createFlashbotsProvider, simulateAndSend } = require("./flashbotsSender");
 const {
   createStats,
@@ -73,9 +78,23 @@ async function createBotRunner({
   const contractState = createContractState({ paused: preflight.paused });
   const ws = new ResilientWsProvider(config, log);
   await ws.connect();
+  await mempoolWatcher.start(ws.getProvider());
 
   const flashbots = await createFlashbotsProvider(config, signer, httpProvider);
-  const loanAmounts = parseLoanAmounts(config, config.pairs);
+
+  const isV4 = config.version === "v4";
+  const loanAmounts = isV4
+    ? parseLoanAmountsForTriangles(config)
+    : parseLoanAmounts(config, config.pairs);
+
+  const mempoolWatcher = createMempoolWatcher({
+    config,
+    log,
+    onTrigger: (trigger) => {
+      metricsStore.record("mempool_trigger", trigger);
+      log.debug(trigger, "mempool swap trigger");
+    },
+  });
 
   let healthServer = null;
   healthServer = startHealthServer({
@@ -100,6 +119,7 @@ async function createBotRunner({
           await new Promise((resolve) => healthServer.close(resolve));
         }
       },
+      async () => mempoolWatcher.stop(),
       async () => ws.disconnect(),
       async () => metricsStore.close(),
     ],
@@ -120,12 +140,19 @@ async function createBotRunner({
     const block = await provider.getBlock(blockNumber);
 
     try {
-      const opportunities = await scanOpportunities(
-        provider,
-        config,
-        config.pairs,
-        loanAmounts
-      );
+      const opportunities = isV4
+        ? await scanOpportunitiesV4(
+            provider,
+            config,
+            config.triangles,
+            loanAmounts
+          )
+        : await scanOpportunities(
+            provider,
+            config,
+            config.pairs,
+            loanAmounts
+          );
 
       if (opportunities.length === 0) {
         log.debug({ blockNumber }, "no net-profitable opportunities");
@@ -136,7 +163,7 @@ async function createBotRunner({
       recordOpportunity(stats, best);
       metricsStore.record("opportunity", {
         block: blockNumber,
-        pair: best.pair,
+        pair: best.pair || best.triangle,
         direction: best.direction,
         loanAmount: best.loanAmount.toString(),
         grossProfit: best.estimatedProfit.toString(),
@@ -146,7 +173,7 @@ async function createBotRunner({
       log.info(
         {
           blockNumber,
-          pair: best.pair,
+          pair: best.pair || best.triangle,
           direction: best.direction,
           loanAmount: best.loanAmount.toString(),
           grossProfit: best.estimatedProfit.toString(),
@@ -161,8 +188,8 @@ async function createBotRunner({
         config,
         flashbotsProvider: flashbots,
         arbContract: arb,
-        asset: best.asset,
-        loanAmount: best.loanAmount,
+        asset: isV4 ? best.loanToken : best.asset,
+        loanAmount: isV4 ? undefined : best.loanAmount,
         plan,
         signer,
         httpProvider,
