@@ -23,6 +23,17 @@ const server = app.listen(port, bind, () => {
   console.log(`EtherSmart control-plane http://${bind}:${port}`);
 });
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(
+      `[control-plane] Port ${port} is already in use. Stop the other process and retry.`
+    );
+  } else {
+    console.error(`[control-plane] Server error: ${err.message}`);
+  }
+  process.exit(1);
+});
+
 const liveFeed = createLiveFeed(server);
 let metricsPoller = null;
 

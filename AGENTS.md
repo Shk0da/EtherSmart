@@ -421,7 +421,7 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 | V4 contract | `npm run v4:test` | 13 passing |
 | V5 contract | `npm run v5:test` | 13 passing |
 | bot-core | `npm run core:test` | 17 passing |
-| control-plane | `npm run control-plane:test` | 9 passing |
+| control-plane | `npm run control-plane:test` | 10 passing |
 | cli | `npm run cli:test` | 5 passing |
 | dashboard-ui | `npm run dashboard:test` | 28 passing |
 | v2 bot | `npm run v2:bot:test` | 2 passing |

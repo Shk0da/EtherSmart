@@ -18,6 +18,12 @@ describe("auth", () => {
     assert.ok(validateSession(r.token));
   });
 
+  it("accepts default dev password", () => {
+    const { password } = require("../src/config");
+    const r = login("12345", password, "1.2.3.4");
+    assert.ok(r.token);
+  });
+
   it("rate limits login", () => {
     for (let i = 0; i < 10; i++) login("x", "y", "9.9.9.9");
     const r = login("y", "y", "9.9.9.9");

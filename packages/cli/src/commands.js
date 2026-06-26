@@ -20,13 +20,8 @@ process.env.REPO_ROOT = repoRoot;
 const botManager = require("../../control-plane/src/botManager");
 const { BOTS } = require("../../control-plane/src/config");
 
-async function healthCheck(url) {
-  try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(2500) });
-    return res.ok;
-  } catch {
-    return false;
-  }
+async function serviceHealthy(svc) {
+  return probeService(svc);
 }
 
 async function statusOne(id, { docker }) {
@@ -41,7 +36,7 @@ async function statusOne(id, { docker }) {
       running = ds.running;
       mode = "docker";
     } else if (running && mode === "process") {
-      const healthy = await healthCheck(svc.url);
+      const healthy = await serviceHealthy(svc);
       return {
         id,
         label: svc.label,
@@ -54,7 +49,7 @@ async function statusOne(id, { docker }) {
       };
     }
 
-    const healthy = running ? await healthCheck(svc.url) : false;
+    const healthy = await serviceHealthy(svc);
     return {
       id,
       label: svc.label,
