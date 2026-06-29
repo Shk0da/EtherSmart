@@ -25,7 +25,7 @@ async function batchGetAmountsOut(provider, config, requests) {
     callData: iface.encodeFunctionData("getAmountsOut", [amountIn, path]),
   }));
 
-  const results = await multicall.aggregate3(calls);
+  const results = await multicall.callStatic.aggregate3(calls);
   const amounts = [];
 
   for (let i = 0; i < results.length; i++) {
