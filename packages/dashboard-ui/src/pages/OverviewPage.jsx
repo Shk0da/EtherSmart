@@ -15,7 +15,7 @@ function StatusBadge({ bot }) {
 export default function OverviewPage() {
   const [bots, setBots] = useState([]);
   const [loading, setLoading] = useState(true);
-  const { connected, events } = useLiveFeed({ maxEvents: 30 });
+  const { connected, events, botsSnapshot } = useLiveFeed({ maxEvents: 30 });
 
   useEffect(() => {
     api("/bots")
@@ -26,9 +26,8 @@ export default function OverviewPage() {
   }, []);
 
   useEffect(() => {
-    const snap = events.find((e) => e.type === "bots_snapshot");
-    if (snap?.bots) setBots(snap.bots);
-  }, [events]);
+    if (botsSnapshot?.bots) setBots(botsSnapshot.bots);
+  }, [botsSnapshot]);
 
   if (loading) return <p className="muted">Загрузка…</p>;
 

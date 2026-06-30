@@ -28,6 +28,7 @@ const { runPreflight } = require("./preflight");
 const { startHealthServer } = require("./healthServer");
 const { BlockRunner } = require("./blockRunner");
 const { registerShutdown } = require("./shutdown");
+const { registerLifecycle } = require("./lifecycle");
 const {
   createContractState,
   refreshContractState,
@@ -115,6 +116,15 @@ async function createBotRunner({
   const isV4 = version === "v4";
   const isV5 = version === "v5";
 
+  // How often (in blocks) to log scan spread/diagnostics. Default every 10
+  // blocks (~2 min) so details show up quickly; also emitted on the 1st block.
+  const scanLogEvery =
+    Number(config.scanLogEvery) > 0
+      ? Number(config.scanLogEvery)
+      : parseInt(process.env.SCAN_LOG_EVERY || "10", 10);
+
+  const lifecycle = registerLifecycle({ log, metricsStore, version });
+
   log.info(
     {
       version,
@@ -142,7 +152,7 @@ async function createBotRunner({
   });
 
   const contractState = createContractState({ paused: preflight.paused });
-  const ws = new ResilientWsProvider(config, log);
+  const ws = new ResilientWsProvider(config, log, { metricsStore });
 
   let pendingMempoolScan = false;
 
@@ -184,6 +194,7 @@ async function createBotRunner({
 
   registerShutdown({
     log,
+    onShutdown: (signal) => lifecycle.recordShutdown(signal),
     hooks: [
       async () => {
         if (healthServer) {
@@ -197,29 +208,106 @@ async function createBotRunner({
   });
 
   async function runScan(blockNumber, provider, block) {
-    let opportunities = isV5
-      ? await scanOpportunitiesV5(provider, config, loanAmounts)
-      : isV4
-        ? await scanOpportunitiesV4(
-            provider,
-            config,
-            config.triangles,
-            loanAmounts
-          )
-        : await rescoreOpportunities(
-            provider,
-            config,
-            await scanOpportunities(
-              provider,
-              config,
-              config.pairs,
-              loanAmounts
-            ),
-            refineOpportunityFinalOut
-          );
+    let opportunities;
+    let scanDiagnostics = null;
+
+    if (isV5) {
+      opportunities = await scanOpportunitiesV5(provider, config, loanAmounts);
+    } else if (isV4) {
+      opportunities = await scanOpportunitiesV4(
+        provider,
+        config,
+        config.triangles,
+        loanAmounts
+      );
+    } else {
+      const scan = await scanOpportunities(
+        provider,
+        config,
+        config.pairs,
+        loanAmounts
+      );
+      scanDiagnostics = scan.diagnostics;
+      opportunities = await rescoreOpportunities(
+        provider,
+        config,
+        scan.opportunities,
+        refineOpportunityFinalOut
+      );
+    }
+
+    // Periodically log the current spreads and exactly what is being compared
+    // (pair / DEX direction / loan size), in addition to stats_snapshot. Fires
+    // whether or not a profitable opportunity was found.
+    if (
+      scanDiagnostics &&
+      scanDiagnostics.comparisons?.length &&
+      (stats.blocksScanned === 1 || stats.blocksScanned % scanLogEvery === 0)
+    ) {
+      const summary = scanDiagnostics.comparisons
+        .map((c) => `${c.pair} ${c.direction} ${c.spreadBps}bps`)
+        .join(" | ");
+      log.info(
+        {
+          blockNumber,
+          comparisons: scanDiagnostics.comparisons,
+          quotesSeen: scanDiagnostics.quotesSeen,
+          summary,
+        },
+        "scan spread (pairs compared)"
+      );
+      metricsStore.record("scan_spread", {
+        block: blockNumber,
+        comparisons: scanDiagnostics.comparisons,
+        quotesSeen: scanDiagnostics.quotesSeen,
+        summary,
+      });
+    }
 
     if (opportunities.length === 0) {
-      log.debug({ blockNumber }, "no net-profitable opportunities");
+      if (scanDiagnostics) {
+        // No profitable round-trip this block. Periodically surface the closest
+        // candidate so "0 opportunities" can be confirmed as a real (too small)
+        // spread rather than silently broken/zero quotes.
+        stats.skippedUnprofitable += scanDiagnostics.evaluated;
+        const sample =
+          stats.blocksScanned === 1 || stats.blocksScanned % scanLogEvery === 0;
+        if (scanDiagnostics.quotesSeen === 0 && sample) {
+          log.warn(
+            { blockNumber, evaluated: scanDiagnostics.evaluated },
+            "scan produced no quotes (check routers/multicall/RPC)"
+          );
+          metricsStore.record("scan_no_quotes", {
+            block: blockNumber,
+            evaluated: scanDiagnostics.evaluated,
+          });
+        } else if (sample) {
+          const best = scanDiagnostics.best || {};
+          log.info(
+            {
+              blockNumber,
+              bestPair: best.pair,
+              bestDirection: best.direction,
+              shortfallBps: best.shortfallBps,
+              quotesSeen: scanDiagnostics.quotesSeen,
+              evaluated: scanDiagnostics.evaluated,
+            },
+            "scan diagnostics (no profitable opportunity)"
+          );
+          metricsStore.record("scan_diag", {
+            block: blockNumber,
+            bestPair: best.pair,
+            bestDirection: best.direction,
+            finalOut: best.finalOut,
+            loan: best.loan,
+            shortfallBps: best.shortfallBps,
+            quotesSeen: scanDiagnostics.quotesSeen,
+            evaluated: scanDiagnostics.evaluated,
+          });
+        }
+      } else {
+        log.debug({ blockNumber }, "no net-profitable opportunities");
+      }
       return;
     }
 

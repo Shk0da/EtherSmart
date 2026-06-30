@@ -458,7 +458,16 @@ Aave premium в bot: **5 bps** (`calcThresholds`) — синхронизируй
 
 SQLite path: `{logDir}/metrics-v2.db` … `metrics-v5.db`.
 
-Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submitted`, `bundle_included`, `block_error`, `stats_snapshot`.
+Event types: `opportunity`, `simulation_ok`, `simulation_failed`, `bundle_submitted`, `bundle_included`, `block_error`, `stats_snapshot`, `bot_started`, `bot_shutdown`, `bot_crashed`, `ws_disconnected`, `ws_reconnected`, `ws_reconnect_failed`, `scan_diag`, `scan_no_quotes`, `scan_spread`.
+
+**Scan diagnostics (V2/V3):** каждые 50 блоков (синхронно со `stats_snapshot`):
+- `scan_spread` — что сейчас сравнивается: массив `comparisons` (по паре лучший `direction` и `spreadBps` = round-trip vs loan после DEX-комиссий, знаковый) + `quotesSeen`. Пишется всегда (есть сделка или нет).
+- `scan_diag` — только при 0 прибыльных: ближайший кандидат (`bestPair`, `bestDirection`, `shortfallBps` — недобор до порога, `spreadBps`, `quotesSeen`, `evaluated`).
+- `scan_no_quotes` — если `quotesSeen === 0` (реальная поломка routers/multicall/RPC).
+
+Логика в `packages/bot-core/src/arbFinder.js` (`diagnostics`) + `createBotRunner.js` (`runScan`).
+
+**Lifecycle / auto-restart:** боты запускаются через супервизор (`packages/bot-core/src/supervisor.js`) из `botManager.startProcess` (CLI + дашборд). Падение (non-zero exit) → авто-рестарт с backoff; остановка пользователем (`stop` = kill дерева / SIGTERM) → без рестарта. События `bot_started`/`bot_shutdown`/`bot_crashed` пишутся в metrics (`packages/bot-core/src/lifecycle.js`). Env: `BOT_AUTORESTART`, `BOT_MAX_RESTARTS`, `BOT_RESTART_BACKOFF_MS`, `BOT_RESTART_MAX_BACKOFF_MS`, `BOT_RESTART_RESET_MS`.
 
 ---
 

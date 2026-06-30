@@ -1,15 +1,26 @@
 const { ethers } = require("ethers");
 
 class ResilientWsProvider {
-  constructor(config, log) {
+  constructor(config, log, { metricsStore = null } = {}) {
     this.config = config;
     this.log = log;
+    this.metricsStore = metricsStore;
     this.provider = null;
     this.reconnectTimer = null;
     this.healthTimer = null;
     this.blockHandlers = new Set();
     this.connected = false;
+    this.hasConnectedOnce = false;
     this.lastBlock = 0;
+  }
+
+  _record(type, payload) {
+    if (!this.metricsStore) return;
+    try {
+      this.metricsStore.record(type, payload);
+    } catch {
+      /* metrics must never break the ws loop */
+    }
   }
 
   async connect() {
@@ -21,7 +32,11 @@ class ResilientWsProvider {
     }
     this.provider = new ethers.providers.WebSocketProvider(this.config.wsUrl);
     this.provider._websocket.on("close", () => {
+      const wasConnected = this.connected;
       this.connected = false;
+      if (wasConnected) {
+        this._record("ws_disconnected", { lastBlock: this.lastBlock });
+      }
       this._scheduleReconnect();
     });
     this.provider._websocket.on("error", (err) => {
@@ -34,6 +49,10 @@ class ResilientWsProvider {
     this._startHealthCheck();
     const net = await this.provider.getNetwork();
     this.connected = true;
+    if (this.hasConnectedOnce) {
+      this._record("ws_reconnected", { chainId: net.chainId });
+    }
+    this.hasConnectedOnce = true;
     this.log.info(
       { chainId: net.chainId, wsUrl: this.config.wsUrl },
       "ws connected"
@@ -87,6 +106,7 @@ class ResilientWsProvider {
         await this.connect();
       } catch (err) {
         this.log.error({ err: err.message }, "ws reconnect failed");
+        this._record("ws_reconnect_failed", { error: err.message });
         this._scheduleReconnect();
       }
     }, 3000);

@@ -19,6 +19,8 @@ module.exports = {
   ...require("./contractState"),
   ...require("./blockRunner"),
   ...require("./shutdown"),
+  ...require("./lifecycle"),
+  ...require("./supervisor"),
   ...require("./healthServer"),
   ...require("./wsProvider"),
   ...require("./flashbotsSender"),

@@ -37,7 +37,15 @@ describe("dashboard-ui routes and navigation", () => {
   });
 
   it("redirects unauthenticated users to /login", () => {
-    assert.match(appSource, /getToken\(\)\s*\?\s*<Layout\s*\/>\s*:\s*<Navigate to="\/login"/);
+    assert.match(appSource, /function RequireAuth/);
+    assert.match(
+      appSource,
+      /getToken\(\)\s*\?\s*children\s*:\s*<Navigate to="\/login"/
+    );
+    assert.match(
+      appSource,
+      /<RequireAuth>\s*<Layout\s*\/>\s*<\/RequireAuth>/
+    );
   });
 
   it("all route page files exist", () => {

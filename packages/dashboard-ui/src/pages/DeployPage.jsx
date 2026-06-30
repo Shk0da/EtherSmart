@@ -6,6 +6,7 @@ const VERSIONS = ["v2", "v3", "v4", "v5"];
 export default function DeployPage() {
   const [version, setVersion] = useState("v5");
   const [jobs, setJobs] = useState([]);
+  const [bots, setBots] = useState([]);
   const [activeJob, setActiveJob] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -14,8 +15,13 @@ export default function DeployPage() {
     api("/deploy/jobs").then(setJobs);
   }
 
+  function loadBots() {
+    api("/bots").then(setBots);
+  }
+
   useEffect(() => {
     loadJobs();
+    loadBots();
   }, []);
 
   useEffect(() => {
@@ -23,7 +29,10 @@ export default function DeployPage() {
     const t = setInterval(async () => {
       const j = await api(`/deploy/jobs/${activeJob.id}`);
       setActiveJob(j);
-      if (j.status !== "running") loadJobs();
+      if (j.status !== "running") {
+        loadJobs();
+        loadBots();
+      }
     }, 2000);
     return () => clearInterval(t);
   }, [activeJob]);
@@ -46,12 +55,44 @@ export default function DeployPage() {
     }
   }
 
+  const botById = Object.fromEntries(bots.map((b) => [b.id, b]));
+  const selectedContract = botById[version]?.contract;
+
   return (
     <div>
       <h2>Deploy</h2>
       <p className="muted">
         Запуск compile + deploy. Требуется DEPLOYER_PK в vX/.env на сервере.
       </p>
+
+      <div className="card" style={{ marginTop: "1rem" }}>
+        <h3>Текущие контракты (ARB_CONTRACT)</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Version</th>
+              <th>Contract</th>
+            </tr>
+          </thead>
+          <tbody>
+            {VERSIONS.map((v) => {
+              const c = botById[v]?.contract;
+              return (
+                <tr key={v}>
+                  <td>{v.toUpperCase()}</td>
+                  <td className="muted">
+                    {c ? (
+                      <code>{c}</code>
+                    ) : (
+                      <span style={{ color: "var(--warn)" }}>не задеплоен</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
 
       <div className="card" style={{ maxWidth: 480, marginTop: "1rem" }}>
         <label>
@@ -64,6 +105,14 @@ export default function DeployPage() {
             ))}
           </select>
         </label>
+        <p className="muted" style={{ marginTop: "0.5rem" }}>
+          Текущий контракт:{" "}
+          {selectedContract ? (
+            <code>{selectedContract}</code>
+          ) : (
+            "не задеплоен"
+          )}
+        </p>
         <button
           className="btn"
           style={{ marginTop: "1rem" }}

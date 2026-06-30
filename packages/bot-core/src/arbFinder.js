@@ -3,6 +3,7 @@ const { batchGetAmountsOut } = require("./multicallPriceMonitor");
 const { estimateGasCostInLoanToken } = require("./gasOracle");
 const { fetchAavePremiumBps } = require("./aavePremium");
 const { scoreOpportunity, sortByNetProfit } = require("./opportunityMath");
+const { calcThresholds } = require("./thresholds");
 const { toBigInt } = require("./toBigInt");
 
 function parseLoanSizes(config) {
@@ -99,11 +100,64 @@ async function scanOpportunities(provider, config, pairs, loanAmountsByPair) {
   const leg2Outs = await batchGetAmountsOut(provider, config, leg2Requests);
   const opportunities = [];
 
+  const diagnostics = {
+    evaluated: leg2Meta.length,
+    quotesSeen: 0,
+    best: null,
+    comparisons: [],
+  };
+  // Best (max) round-trip spread per pair, so logs show exactly what is being
+  // compared each block (which pair / direction / loan size won out).
+  const byPair = new Map();
+
   for (let i = 0; i < leg2Meta.length; i++) {
     const finalOut = leg2Outs[i];
-    if (!finalOut || finalOut === 0n) continue;
-
     const { pair, leg1Dex, leg2Dex, loanIn } = leg2Meta[i];
+
+    if (!finalOut || finalOut === 0n) continue;
+    diagnostics.quotesSeen += 1;
+
+    // Track the candidate closest to (or furthest into) profit, even when it
+    // does not clear the threshold. shortfallBps is measured against the loan:
+    // negative means the round-trip would have been profitable.
+    const out = toBigInt(finalOut);
+    const loan = toBigInt(loanIn);
+    const { debt, minProfit } = calcThresholds(loan, config, aavePremiumBps);
+    const threshold = debt + minProfit;
+    const shortfallBps =
+      loan > 0n ? Number(((threshold - out) * 10000n) / loan) : null;
+    // spreadBps = raw round-trip result vs loan (after DEX fees): negative means
+    // the round-trip loses, positive means gross profit before gas/premium.
+    const spreadBps =
+      loan > 0n ? Number(((out - loan) * 10000n) / loan) : null;
+    const direction = `${leg1Dex}->${leg2Dex}`;
+
+    const prevPair = byPair.get(pair.name);
+    if (!prevPair || spreadBps > prevPair.spreadBps) {
+      byPair.set(pair.name, {
+        pair: pair.name,
+        direction,
+        spreadBps,
+        shortfallBps,
+        loan: loan.toString(),
+        finalOut: out.toString(),
+      });
+    }
+
+    if (
+      diagnostics.best === null ||
+      shortfallBps < diagnostics.best.shortfallBps
+    ) {
+      diagnostics.best = {
+        pair: pair.name,
+        direction,
+        finalOut: out.toString(),
+        loan: loan.toString(),
+        shortfallBps,
+        spreadBps,
+      };
+    }
+
     const scored = scoreOpportunity({
       finalOut,
       loanIn,
@@ -129,7 +183,12 @@ async function scanOpportunities(provider, config, pairs, loanAmountsByPair) {
     });
   }
 
-  return sortByNetProfit(opportunities);
+  diagnostics.comparisons = [...byPair.values()].sort(
+    (a, b) => b.spreadBps - a.spreadBps
+  );
+
+  const sorted = sortByNetProfit(opportunities);
+  return { opportunities: sorted, diagnostics };
 }
 
 module.exports = {

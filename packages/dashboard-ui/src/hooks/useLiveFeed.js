@@ -10,6 +10,7 @@ function wsUrl() {
 export function useLiveFeed({ botId = null, maxEvents = 50 } = {}) {
   const [connected, setConnected] = useState(false);
   const [events, setEvents] = useState([]);
+  const [botsSnapshot, setBotsSnapshot] = useState(null);
   const wsRef = useRef(null);
   const retryRef = useRef(null);
 
@@ -40,10 +41,15 @@ export function useLiveFeed({ botId = null, maxEvents = 50 } = {}) {
           return;
         }
         if (data.type === "connected") return;
-        if (botId && data.botId && data.botId !== botId) return;
-        if (botId && data.event?.botId && data.event.botId !== botId) {
-          if (data.type !== "bots_snapshot") return;
+        // bots_snapshot is a frequent (10s) status poll: keep it out of the
+        // visible feed buffer (so rarer bot events are not evicted), expose it
+        // separately for status cards.
+        if (data.type === "bots_snapshot") {
+          setBotsSnapshot(data);
+          return;
         }
+        if (botId && data.botId && data.botId !== botId) return;
+        if (botId && data.event?.botId && data.event.botId !== botId) return;
         push(data);
       };
     }
@@ -55,5 +61,5 @@ export function useLiveFeed({ botId = null, maxEvents = 50 } = {}) {
     };
   }, [botId, push]);
 
-  return { connected, events, clear: () => setEvents([]) };
+  return { connected, events, botsSnapshot, clear: () => setEvents([]) };
 }

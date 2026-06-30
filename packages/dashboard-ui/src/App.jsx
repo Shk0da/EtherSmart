@@ -10,13 +10,24 @@ import BalancesPage from "./pages/BalancesPage";
 import AuditPage from "./pages/AuditPage";
 import { getToken } from "./api";
 
+// Evaluated by <Routes> on every navigation, so the token set during login is
+// picked up immediately. An inline ternary in App would be stale because App
+// is rendered once by main.jsx and not re-run on route changes.
+function RequireAuth({ children }) {
+  return getToken() ? children : <Navigate to="/login" replace />;
+}
+
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route
         path="/"
-        element={getToken() ? <Layout /> : <Navigate to="/login" />}
+        element={
+          <RequireAuth>
+            <Layout />
+          </RequireAuth>
+        }
       >
         <Route index element={<OverviewPage />} />
         <Route path="bots/:id" element={<BotPage />} />

@@ -43,3 +43,15 @@ docker compose up v4-bot
 ```
 
 Port **8789**.
+
+## Auto-restart и события жизненного цикла
+
+При запуске через CLI/дашборд бот стартует под **супервизором**
+(`packages/bot-core/src/supervisor.js`): авто-рестарт при **падении** и **никогда**
+при остановке пользователем. Причину остановки смотри в `/metrics/recent` и Live feed:
+`bot_started` (`restartCount > 0` = авто-рестарт), `bot_shutdown` (`signal`),
+`bot_crashed` (`scope`/`error`/`stack`), `ws_disconnected` / `ws_reconnected`.
+
+Env супервизора: `BOT_AUTORESTART` (def. `true`), `BOT_MAX_RESTARTS` (10),
+`BOT_RESTART_BACKOFF_MS` (2000), `BOT_RESTART_MAX_BACKOFF_MS` (30000),
+`BOT_RESTART_RESET_MS` (60000).
