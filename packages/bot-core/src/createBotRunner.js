@@ -212,14 +212,18 @@ async function createBotRunner({
     let scanDiagnostics = null;
 
     if (isV5) {
-      opportunities = await scanOpportunitiesV5(provider, config, loanAmounts);
+      const scan = await scanOpportunitiesV5(provider, config, loanAmounts);
+      scanDiagnostics = scan.diagnostics;
+      opportunities = scan.opportunities;
     } else if (isV4) {
-      opportunities = await scanOpportunitiesV4(
+      const scan = await scanOpportunitiesV4(
         provider,
         config,
         config.triangles,
         loanAmounts
       );
+      scanDiagnostics = scan.diagnostics;
+      opportunities = scan.opportunities;
     } else {
       const scan = await scanOpportunities(
         provider,

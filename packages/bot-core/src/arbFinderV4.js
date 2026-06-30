@@ -131,6 +131,13 @@ async function scanOpportunitiesV4(
   const premiumBps = await resolvePremiumBps(provider, config);
   const gasByToken = new Map();
   const opportunities = [];
+  const diagnostics = {
+    evaluated: 0,
+    quotesSeen: 0,
+    best: null,
+    comparisons: [],
+  };
+  const byTriangle = new Map();
 
   async function gasFor(loanToken, decimals) {
     const key = loanToken.toLowerCase();
@@ -153,6 +160,7 @@ async function scanOpportunitiesV4(
       if (!rawLoan) continue;
       const loanIn = toBigInt(rawLoan);
       if (!loanIn) continue;
+      diagnostics.evaluated += 1;
 
       const out1 = await quoteLegOut(provider, config, leg1, loanIn);
       if (!out1) continue;
@@ -162,6 +170,40 @@ async function scanOpportunitiesV4(
 
       const finalOut = await quoteLegOut(provider, config, leg3, out2);
       if (!finalOut) continue;
+      diagnostics.quotesSeen += 1;
+
+      const { debt, minProfit } = calcThresholds(loanIn, config, premiumBps);
+      const threshold = debt + minProfit;
+      const shortfallBps =
+        loanIn > 0n ? Number(((threshold - finalOut) * 10000n) / loanIn) : null;
+      const spreadBps =
+        loanIn > 0n ? Number(((finalOut - loanIn) * 10000n) / loanIn) : null;
+      const direction = tri.legs.map((l) => l.venue).join("->");
+
+      const prevTri = byTriangle.get(tri.name);
+      if (!prevTri || spreadBps > prevTri.spreadBps) {
+        byTriangle.set(tri.name, {
+          pair: tri.name,
+          direction,
+          spreadBps,
+          shortfallBps,
+          loan: loanIn.toString(),
+          finalOut: finalOut.toString(),
+        });
+      }
+      if (
+        diagnostics.best === null ||
+        shortfallBps < diagnostics.best.shortfallBps
+      ) {
+        diagnostics.best = {
+          pair: tri.name,
+          direction,
+          finalOut: finalOut.toString(),
+          loan: loanIn.toString(),
+          shortfallBps,
+          spreadBps,
+        };
+      }
 
       const scored = scoreOpportunity({
         finalOut,
@@ -184,14 +226,21 @@ async function scanOpportunitiesV4(
         estimatedProfit: scored.grossProfit,
         netProfit: scored.netProfit,
         gasCostLoanToken: scored.gasCostLoanToken,
-        direction: tri.legs.map((l) => l.venue).join("->"),
+        direction,
         flashSource: config.flashSource ?? 0,
         premiumBps: premiumBps.toString(),
       });
     }
   }
 
-  return sortByNetProfit(opportunities);
+  diagnostics.comparisons = [...byTriangle.values()].sort(
+    (a, b) => b.spreadBps - a.spreadBps
+  );
+
+  return {
+    opportunities: sortByNetProfit(opportunities),
+    diagnostics,
+  };
 }
 
 module.exports = {

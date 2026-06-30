@@ -2,7 +2,7 @@ require("@nomicfoundation/hardhat-toolbox");
 require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 
 const MAINNET_RPC_URL = process.env.MAINNET_RPC_URL || "";
-const DEPLOYER_PK = process.env.DEPLOYER_PK || "";
+const DEPLOYER_PK = process.env.DEPLOYER_PK || process.env.BOT_PK || "";
 
 module.exports = {
   solidity: {

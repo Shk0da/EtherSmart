@@ -47,10 +47,14 @@ function getConfig() {
 
 async function main() {
   const cfg = getConfig();
-  const [deployer] = await ethers.getSigners();
-  if (!deployer) throw new Error("No signer. Set DEPLOYER_PK in .env.");
+  const rpcUrl = process.env.MAINNET_RPC_URL;
+  const pk = process.env.DEPLOYER_PK || process.env.BOT_PK;
+  if (!rpcUrl) throw new Error("MAINNET_RPC_URL is required");
+  if (!pk) throw new Error("No signer. Set DEPLOYER_PK (or BOT_PK) in .env.");
+  const provider = new ethers.JsonRpcProvider(rpcUrl);
+  const deployer = new ethers.Wallet(pk, provider);
 
-  const balance = await ethers.provider.getBalance(deployer.address);
+  const balance = await provider.getBalance(deployer.address);
   console.log("Network :", network.name);
   console.log("Contract: HonestFlashArbV2");
   console.log("Deployer:", deployer.address);
@@ -59,7 +63,7 @@ async function main() {
   console.log("Routers :", cfg.routers);
   console.log("Tokens  :", cfg.tokens);
 
-  const Arb = await ethers.getContractFactory("HonestFlashArbV2");
+  const Arb = await ethers.getContractFactory("HonestFlashArbV2", deployer);
   const arb = await Arb.deploy(cfg.pool, cfg.routers, cfg.tokens);
   console.log("Deploy tx:", arb.deploymentTransaction().hash);
   await arb.waitForDeployment();
