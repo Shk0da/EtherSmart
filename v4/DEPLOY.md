@@ -30,7 +30,7 @@ constructor(
 | Uni V2 Router | `0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D` |
 | Sushi Router | `0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F` |
 | Uni V3 Router | `0x68b3465833fb72A70eDF967F1a4677710b7893f0` |
-| Curve 3pool | `0xbEbc44782C7Db0a1A60Cb6fe97d0b48303205716` |
+| Curve 3pool | `0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7` |
 
 ## Deploy
 

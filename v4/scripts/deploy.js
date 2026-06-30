@@ -9,7 +9,7 @@ const CONFIG = {
       "0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F",
     ],
     routersV3: ["0x68b3465833Fb72a70edf967f1A4677710B7893f0"],
-    curvePools: ["0xBEbc44782c7DB0a1A60cb6fe97d0b48303205716"],
+    curvePools: ["0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7"],
     tokens: [
       "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
       "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2",

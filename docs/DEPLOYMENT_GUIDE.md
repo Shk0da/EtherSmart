@@ -570,7 +570,7 @@ docker compose up v2-bot   # v3-bot, v4-bot, v5-bot
 | Sushi Router | `0xd9e1cE17f2641f24aE83637ab66a2cca9C378B9F` |
 | Uni V3 SwapRouter02 | `0x68b3465833fb72A70eDF967F1a4677710b7893f0` |
 | QuoterV2 | `0x61fFE014bA17989E743c5F6cB21bF9697530B21e` |
-| Curve 3pool | `0xbEbc44782C7Db0a1A60Cb6fe97d0b48303205716` |
+| Curve 3pool | `0xbEbc44782C7dB0a1A60Cb6fe97d0b483032FF1C7` |
 | Multicall3 | `0xcA11bde05977b3631167028862bE2a173976CA11` |
 | Flashbots relay | `https://relay.flashbots.net` |
 
